@@ -78,34 +78,34 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
             : 'bg-[var(--bg-color)]/75 backdrop-blur-sm border-b border-[var(--border-color)]/40 py-3.5'
         } ${className}`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between gap-4">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 flex items-center justify-between gap-1.5 sm:gap-4">
           {/* Studio Brand & Logo */}
           <button
             id="nav-brand-logo"
             onClick={() => handleSelect('home')}
-            className="flex items-center gap-2.5 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1 shrink-0"
+            className="flex items-center gap-1.5 sm:gap-2.5 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1 shrink min-w-0"
             aria-label="AV Productions Home"
           >
-            <div className="w-8 h-8 rounded-md bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/30 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform">
-              <Film className="w-4 h-4" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/30 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform shrink-0">
+              <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </div>
-            <div>
-              <span className="font-heading font-bold tracking-wider text-sm sm:text-base text-[var(--text-heading)] group-hover:text-[var(--color-gold)] transition-colors block leading-none">
+            <div className="min-w-0">
+              <span className="font-heading font-bold tracking-tight sm:tracking-wider text-xs sm:text-base text-[var(--text-heading)] group-hover:text-[var(--color-gold)] transition-colors block leading-none truncate">
                 AV PRODUCTIONS
               </span>
-              <span className="text-[9px] tracking-[0.25em] text-[var(--color-gold)] uppercase block mt-1 font-semibold">
+              <span className="hidden sm:block text-[9px] tracking-[0.25em] text-[var(--color-gold)] uppercase mt-1 font-semibold">
                 FILM & SOUND STUDIO
               </span>
             </div>
           </button>
 
-          {/* Right Actions: Search, Theme Toggle, Book CTA & Hamburger Menu (Only Menu) */}
-          <div className="flex items-center gap-2 sm:gap-3">
+          {/* Right Actions: Search, Theme Toggle, Book CTA & Hamburger Menu (All visible on mobile and laptop) */}
+          <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-3 shrink-0">
             {/* Search Pill Trigger */}
             <button
               id="nav-search-trigger"
               onClick={onOpenSearch}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] hover:border-[var(--color-gold)]/60 text-xs text-[var(--text-body)]/70 hover:text-[var(--text-heading)] transition-all cursor-pointer shadow-xs"
+              className="w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] hover:border-[var(--color-gold)]/60 text-xs text-[var(--text-body)]/70 hover:text-[var(--text-heading)] transition-all cursor-pointer shadow-xs flex items-center justify-center sm:gap-2 shrink-0"
               title="Search services, works, rates (⌘K)"
               aria-label="Search the website"
             >
@@ -120,14 +120,14 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
             <button
               id="nav-theme-toggle"
               onClick={toggleTheme}
-              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] shadow-xs flex items-center justify-center text-[var(--color-gold)] hover:scale-105 hover:border-[var(--color-gold)]/60 transition-all cursor-pointer focus:outline-none"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] shadow-xs flex items-center justify-center text-[var(--color-gold)] hover:scale-105 hover:border-[var(--color-gold)]/60 transition-all cursor-pointer focus:outline-none shrink-0"
               aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
               title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
             >
               {theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-[var(--color-gold)]" />
+                <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)]" />
               ) : (
-                <Moon className="w-4 h-4 text-[var(--color-gold)]" />
+                <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)]" />
               )}
             </button>
 
@@ -135,26 +135,29 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
             <button
               id="nav-book-cta-btn"
               onClick={() => handleSelect('book')}
-              className={`inline-flex items-center gap-1.5 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-sm bg-[var(--color-gold)] text-[#192c45] hover:brightness-105 transition-all text-xs font-semibold tracking-wider uppercase cursor-pointer shadow-xs whitespace-nowrap ${
+              className={`inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-sm bg-[var(--color-gold)] text-[#192c45] hover:brightness-105 transition-all text-xs font-semibold tracking-wider uppercase cursor-pointer shadow-xs whitespace-nowrap shrink-0 ${
                 activeSection === 'book' ? 'ring-2 ring-[var(--color-gold)] ring-offset-2' : ''
               }`}
+              title="Book Production"
+              aria-label="Book Production"
             >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Book Production</span>
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Book Production</span>
+              <span className="sm:hidden text-[11px] font-bold">Book</span>
             </button>
 
             {/* Hamburger Menu Toggle Button (Sole navigation menu) */}
             <button
               id="main-hamburger-menu-btn"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="px-2.5 sm:px-3 h-8 sm:h-9 rounded-md border border-[var(--border-color)] bg-[var(--bg-color)] flex items-center gap-1.5 text-[var(--text-heading)] hover:text-[var(--color-gold)] hover:border-[var(--color-gold)]/60 transition-all cursor-pointer focus:outline-none shadow-xs group"
+              className="w-8 h-8 sm:w-auto sm:px-3 sm:h-9 rounded-md border border-[var(--border-color)] bg-[var(--bg-color)] flex items-center justify-center sm:gap-1.5 text-[var(--text-heading)] hover:text-[var(--color-gold)] hover:border-[var(--color-gold)]/60 transition-all cursor-pointer focus:outline-none shadow-xs group shrink-0"
               aria-label={mobileMenuOpen ? 'Close navigation' : 'Open navigation'}
               aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? (
-                <X className="w-4 h-4 text-[var(--color-gold)]" />
+                <X className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)]" />
               ) : (
-                <Menu className="w-4 h-4 text-[var(--color-gold)] group-hover:scale-110 transition-transform" />
+                <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)] group-hover:scale-110 transition-transform" />
               )}
               <span className="hidden sm:inline text-xs font-semibold uppercase tracking-wider">
                 {mobileMenuOpen ? 'Close' : 'Menu'}

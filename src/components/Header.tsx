@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
-import { Sun, Moon, Film } from 'lucide-react';
+import { Sun, Moon, Film, Search, Calendar } from 'lucide-react';
 
 interface HeaderProps {
   activeSection: string;
   onNavigate: (section: string) => void;
+  onOpenSearch?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeSection, onNavigate }) => {
+export const Header: React.FC<HeaderProps> = ({ activeSection, onNavigate, onOpenSearch }) => {
   const { siteSettings, theme, toggleTheme } = useData();
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
@@ -70,22 +71,22 @@ export const Header: React.FC<HeaderProps> = ({ activeSection, onNavigate }) => 
             : 'bg-transparent py-5'
         }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-2.5 sm:px-6 lg:px-8 flex items-center justify-between gap-1.5 sm:gap-4">
           {/* Logo / Brand */}
           <button
             id="brand-logo-btn"
             onClick={() => onNavigate('home')}
-            className="flex items-center gap-2.5 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1"
+            className="flex items-center gap-1.5 sm:gap-2.5 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1 shrink min-w-0"
             aria-label="AV Productions Home"
           >
-            <div className="w-7 h-7 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform">
-              <Film className="w-5 h-5" />
+            <div className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform shrink-0">
+              <Film className="w-4 h-4" />
             </div>
-            <div>
-              <span className="font-heading font-semibold tracking-wider text-sm sm:text-base text-[var(--text-heading)] group-hover:text-[var(--color-gold)] transition-colors block leading-none">
+            <div className="min-w-0">
+              <span className="font-heading font-semibold tracking-tight sm:tracking-wider text-xs sm:text-base text-[var(--text-heading)] group-hover:text-[var(--color-gold)] transition-colors block leading-none truncate">
                 AV PRODUCTIONS
               </span>
-              <span className="text-[9px] tracking-[0.25em] text-[var(--color-gold)] uppercase block mt-1 font-semibold">
+              <span className="hidden sm:block text-[9px] tracking-[0.25em] text-[var(--color-gold)] uppercase mt-1 font-semibold">
                 STUDIO
               </span>
             </div>
@@ -143,30 +144,48 @@ export const Header: React.FC<HeaderProps> = ({ activeSection, onNavigate }) => 
             </button>
           </nav>
 
-          {/* Right Controls: Theme Toggle, Desktop Book CTA & Mobile Toggle */}
-          <div className="flex items-center gap-3">
-            {/* Desktop Direct Book Action */}
-            <button
-              id="header-desktop-book-btn"
-              onClick={() => onNavigate('book')}
-              className="hidden lg:inline-flex items-center px-4 py-2 text-xs font-sans font-semibold tracking-wider uppercase bg-[var(--color-gold)] text-[#192c45] hover:brightness-105 transition-all rounded-sm cursor-pointer shadow-xs"
-            >
-              Book Production
-            </button>
+          {/* Right Controls: Search, Theme Toggle, Book CTA & Hamburger Menu */}
+          <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
+            {/* Search Trigger */}
+            {onOpenSearch && (
+              <button
+                id="header-search-btn"
+                onClick={onOpenSearch}
+                className="w-8 h-8 sm:w-auto sm:px-3 sm:py-1.5 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] text-xs text-[var(--text-body)]/70 hover:text-[var(--color-gold)] hover:border-[var(--color-gold)]/60 transition-all cursor-pointer shadow-xs flex items-center justify-center sm:gap-2 shrink-0"
+                title="Search (⌘K)"
+                aria-label="Search"
+              >
+                <Search className="w-3.5 h-3.5 text-[var(--color-gold)] shrink-0" />
+                <span className="hidden sm:inline text-[11px] font-medium">Search...</span>
+              </button>
+            )}
 
             {/* Theme Toggle Button */}
             <button
               id="theme-toggle-btn"
               onClick={toggleTheme}
-              className="p-2 text-[var(--text-heading)]/70 hover:text-[var(--color-gold)] transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)]"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-full border border-[var(--border-color)] bg-[var(--bg-color)] shadow-xs flex items-center justify-center text-[var(--color-gold)] hover:scale-105 hover:border-[var(--color-gold)]/60 transition-colors cursor-pointer focus:outline-none shrink-0"
               aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
               title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
             >
               {theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-[var(--color-gold)]" />
+                <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)]" />
               ) : (
-                <Moon className="w-4 h-4 text-[var(--color-gold)]" />
+                <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[var(--color-gold)]" />
               )}
+            </button>
+
+            {/* Book Action: Compact on mobile, full on desktop */}
+            <button
+              id="header-desktop-book-btn"
+              onClick={() => onNavigate('book')}
+              className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-4 py-1.5 sm:py-2 text-xs font-sans font-semibold tracking-wider uppercase bg-[var(--color-gold)] text-[#192c45] hover:brightness-105 transition-all rounded-sm cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+              title="Book Production"
+              aria-label="Book Production"
+            >
+              <Calendar className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Book Production</span>
+              <span className="sm:hidden text-[11px] font-bold">Book</span>
             </button>
 
             {/* Mobile Hamburger Icon (hidden on desktop) */}
@@ -175,7 +194,7 @@ export const Header: React.FC<HeaderProps> = ({ activeSection, onNavigate }) => 
               onClick={() => setIsOpen(!isOpen)}
               aria-expanded={isOpen}
               aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              className="md:hidden w-10 h-10 flex flex-col items-center justify-center gap-[5px] p-2 text-[var(--text-heading)] hover:text-[var(--color-gold)] transition-colors cursor-pointer focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)]"
+              className="w-8 h-8 sm:w-10 sm:h-10 flex flex-col items-center justify-center gap-[4px] sm:gap-[5px] rounded-md border border-[var(--border-color)] bg-[var(--bg-color)] text-[var(--text-heading)] hover:text-[var(--color-gold)] hover:border-[var(--color-gold)]/60 transition-colors cursor-pointer focus:outline-none md:hidden shrink-0"
             >
               <span
                 className={`w-5 h-[2px] bg-current rounded-full transition-all duration-300 origin-center ${
