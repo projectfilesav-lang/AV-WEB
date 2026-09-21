@@ -52,6 +52,7 @@ import {
   updateSupabaseConfig,
   clearSupabaseConfig,
   testSupabaseConnection,
+  normalizeSupabaseUrl,
   SUPABASE_SQL_SCHEMA
 } from '../supabase';
 
@@ -1624,7 +1625,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <button
                         type="button"
                         onClick={() => {
-                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+                          const normalized = normalizeSupabaseUrl(supabaseUrlInput);
+                          if (supabaseUrlInput && !normalized) {
+                            showToast('Please enter a valid URL (e.g. https://your-id.supabase.co)');
+                            return;
+                          }
+                          if (normalized) {
+                            setSupabaseUrlInput(normalized);
+                          }
+                          updateSupabaseConfig(normalized || supabaseUrlInput, supabaseKeyInput);
                           showToast('Supabase credentials saved.');
                         }}
                         className="px-4 py-2 bg-[var(--color-gold)] hover:bg-[var(--color-gold-hover)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors"
@@ -1640,8 +1649,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           setSupabaseTesting(true);
                           setSupabaseTestResult(null);
                           try {
-                            updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
-                            const res = await testSupabaseConnection();
+                            const normalized = normalizeSupabaseUrl(supabaseUrlInput) || supabaseUrlInput;
+                            if (normalized && normalized !== supabaseUrlInput) {
+                              setSupabaseUrlInput(normalized);
+                            }
+                            updateSupabaseConfig(normalized, supabaseKeyInput);
+                            const res = await testSupabaseConnection(normalized, supabaseKeyInput);
                             setSupabaseTestResult(res);
                           } catch (err: any) {
                             setSupabaseTestResult({ success: false, message: err?.message || 'Connection failed' });

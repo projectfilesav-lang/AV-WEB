@@ -20,11 +20,57 @@ export function updateAdminPassword(newPassword: string): void {
   localStorage.setItem(STORAGE_KEY_ADMIN_PASSWORD, newPassword.trim());
 }
 
+export function isValidHttpUrl(stringToTest: string | undefined | null): boolean {
+  if (!stringToTest || typeof stringToTest !== 'string') return false;
+  const trimmed = stringToTest.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function normalizeSupabaseUrl(input: string | undefined | null): string {
+  if (!input || typeof input !== 'string') return '';
+  let trimmed = input.trim();
+  if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
+
+  // If user only provided project ID (e.g., "abcdefghijklm")
+  if (!trimmed.includes('.') && !trimmed.includes('/')) {
+    trimmed = `https://${trimmed}.supabase.co`;
+  } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    trimmed = `https://${trimmed}`;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.origin;
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 export function getStoredSupabaseConfig(): { url: string; anonKey: string } {
-  const envObj = (import.meta as unknown as { env?: Record<string, string> }).env || {};
-  const url = localStorage.getItem(STORAGE_KEY_URL) || envObj.VITE_SUPABASE_URL || '';
-  const anonKey = localStorage.getItem(STORAGE_KEY_KEY) || envObj.VITE_SUPABASE_ANON_KEY || '';
-  return { url: url.trim(), anonKey: anonKey.trim() };
+  try {
+    const envObj = (import.meta as unknown as { env?: Record<string, string> }).env || {};
+    const rawUrl = (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_URL) : '') || envObj.VITE_SUPABASE_URL || '';
+    const rawKey = (typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY_KEY) : '') || envObj.VITE_SUPABASE_ANON_KEY || '';
+
+    const url = normalizeSupabaseUrl(rawUrl);
+    let anonKey = rawKey ? rawKey.trim() : '';
+    if (anonKey === 'undefined' || anonKey === 'null') {
+      anonKey = '';
+    }
+
+    return { url, anonKey };
+  } catch {
+    return { url: '', anonKey: '' };
+  }
 }
 
 export interface StoredAdminSession {
@@ -63,8 +109,21 @@ export function clearAdminSession() {
 }
 
 export function saveSupabaseConfig(url: string, anonKey: string) {
-  localStorage.setItem(STORAGE_KEY_URL, url.trim());
-  localStorage.setItem(STORAGE_KEY_KEY, anonKey.trim());
+  const normalizedUrl = normalizeSupabaseUrl(url);
+  const trimmedKey = anonKey ? anonKey.trim() : '';
+
+  if (normalizedUrl) {
+    localStorage.setItem(STORAGE_KEY_URL, normalizedUrl);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_URL);
+  }
+
+  if (trimmedKey && trimmedKey !== 'undefined' && trimmedKey !== 'null') {
+    localStorage.setItem(STORAGE_KEY_KEY, trimmedKey);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_KEY);
+  }
+
   supabaseInstance = null;
   currentConfigUrl = '';
   currentConfigKey = '';
@@ -87,7 +146,7 @@ let currentConfigKey = '';
 
 export function getSupabaseClient(): SupabaseClient | null {
   const { url, anonKey } = getStoredSupabaseConfig();
-  if (!url || !anonKey) return null;
+  if (!url || !anonKey || anonKey.length < 8) return null;
 
   if (!supabaseInstance || currentConfigUrl !== url || currentConfigKey !== anonKey) {
     try {
@@ -101,7 +160,7 @@ export function getSupabaseClient(): SupabaseClient | null {
       currentConfigUrl = url;
       currentConfigKey = anonKey;
     } catch (e) {
-      console.error('Failed to initialize Supabase client:', e);
+      console.warn('Supabase client initialization warning:', e);
       return null;
     }
   }
@@ -296,20 +355,46 @@ export function toCamelCase(obj: any): any {
 // SUPABASE CONNECTION & HEALTH TEST
 // ============================================================================
 
-export async function testSupabaseConnection(): Promise<{
+export async function testSupabaseConnection(
+  overrideUrl?: string,
+  overrideKey?: string
+): Promise<{
   success: boolean;
   message: string;
   latencyMs?: number;
 }> {
-  const { url, anonKey } = getStoredSupabaseConfig();
-  if (!url || !anonKey) {
+  const config = getStoredSupabaseConfig();
+  const rawUrl = overrideUrl !== undefined ? overrideUrl : config.url;
+  const rawKey = overrideKey !== undefined ? overrideKey : config.anonKey;
+
+  const url = normalizeSupabaseUrl(rawUrl);
+  const anonKey = rawKey ? rawKey.trim() : '';
+
+  if (!url) {
     return {
       success: false,
-      message: 'Supabase URL or Anon Key is missing. Please configure them in Settings.'
+      message: 'Please provide a valid Supabase project URL (e.g. https://your-id.supabase.co).'
+    };
+  }
+  if (!anonKey) {
+    return {
+      success: false,
+      message: 'Supabase Anon Key is missing. Please provide your public anon key.'
     };
   }
 
-  const supabase = getSupabaseClient();
+  let supabase: SupabaseClient | null = null;
+  try {
+    supabase = createClient(url, anonKey, {
+      auth: { persistSession: false }
+    });
+  } catch (err: any) {
+    return {
+      success: false,
+      message: `Invalid configuration: ${err?.message || 'Could not initialize client'}`
+    };
+  }
+
   if (!supabase) {
     return {
       success: false,
