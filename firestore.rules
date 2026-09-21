@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default-deny global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Connection validation endpoint for system health test
+    match /test/{docId} {
+      allow read: if isValidId(docId);
+      allow write: if false;
+    }
+
+    // Site settings singleton
+    match /site_settings/{docId} {
+      allow read: if isValidId(docId);
+      allow write: if false;
+    }
+
+    // Theme tokens
+    match /theme_tokens/{docId} {
+      allow read: if isValidId(docId);
+      allow write: if false;
+    }
+
+    // Milestones for vertical film-timeline
+    match /milestones/{milestoneId} {
+      allow read: if isValidId(milestoneId);
+      allow write: if false;
+    }
+
+    // Services
+    match /services/{serviceId} {
+      allow read: if isValidId(serviceId);
+      allow write: if false;
+    }
+
+    // Portfolio Categories
+    match /portfolio_categories/{categoryId} {
+      allow read: if isValidId(categoryId);
+      allow write: if false;
+    }
+
+    // Portfolio Items
+    match /portfolio_items/{itemId} {
+      allow read: if isValidId(itemId);
+      allow write: if false;
+    }
+
+    // Reviews: only Live reviews are publicly readable
+    match /reviews/{reviewId} {
+      allow get, list: if isValidId(reviewId) && resource.data.status == 'Live';
+      allow write: if false;
+    }
+
+    // FAQs
+    match /faqs/{faqId} {
+      allow read: if isValidId(faqId);
+      allow write: if false;
+    }
+
+    // Blog Posts: only Published posts are publicly readable
+    match /blog_posts/{postId} {
+      allow get, list: if isValidId(postId) && resource.data.status == 'Published';
+      allow write: if false;
+    }
+
+    // Blog Comments: only Approved comments are publicly readable
+    match /blog_comments/{commentId} {
+      allow get, list: if isValidId(commentId) && resource.data.status == 'Approved';
+      allow write: if false;
+    }
+
+    // Bookings: strictly confidential, zero public read or write from client SDK
+    match /bookings/{bookingId} {
+      allow read, write: if false;
+    }
+  }
+}

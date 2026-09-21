@@ -1,0 +1,6 @@
+{
+  "name": "AV Productions",
+  "description": "Boutique creative portfolio and AV production studio website with public showcase and backstage administrative management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

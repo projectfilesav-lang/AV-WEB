@@ -1,0 +1,252 @@
+{
+  "entities": {
+    "SiteSettings": {
+      "title": "SiteSettings",
+      "description": "Global website settings, content copy, contact details, and toggles",
+      "type": "object",
+      "properties": {
+        "heroTitle": { "type": "string", "maxLength": 100 },
+        "heroTagline": { "type": "string", "maxLength": 300 },
+        "heroMediaUrl": { "type": "string", "maxLength": 1000 },
+        "heroMediaType": { "type": "string", "enum": ["none", "image", "video"] },
+        "introStripText": { "type": "string", "maxLength": 500 },
+        "ctaHeadline": { "type": "string", "maxLength": 200 },
+        "ctaSubline": { "type": "string", "maxLength": 300 },
+        "contactEmail": { "type": "string", "maxLength": 120 },
+        "contactPhone": { "type": "string", "maxLength": 50 },
+        "copyrightText": { "type": "string", "maxLength": 120 },
+        "promoBannerEnabled": { "type": "boolean" },
+        "promoBannerText": { "type": "string", "maxLength": 200 },
+        "floatingBookButtonEnabled": { "type": "boolean" },
+        "floatingBookButtonLabel": { "type": "string", "maxLength": 40 },
+        "googleReviewsUrl": { "type": "string", "maxLength": 1000 },
+        "privacyPolicy": { "type": "string", "maxLength": 10000 },
+        "termsOfService": { "type": "string", "maxLength": 10000 },
+        "cookiePolicy": { "type": "string", "maxLength": 10000 },
+        "metaTitle": { "type": "string", "maxLength": 100 },
+        "metaDescription": { "type": "string", "maxLength": 300 },
+        "ogImageUrl": { "type": "string", "maxLength": 1000 },
+        "gaMeasurementId": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["heroTitle", "contactEmail"]
+    },
+    "ThemeTokens": {
+      "title": "ThemeTokens",
+      "description": "Design tokens for dark and light themes including colors and typography",
+      "type": "object",
+      "properties": {
+        "goldAccent": { "type": "string", "maxLength": 30 },
+        "darkBg": { "type": "string", "maxLength": 30 },
+        "darkBody": { "type": "string", "maxLength": 30 },
+        "darkHeading": { "type": "string", "maxLength": 30 },
+        "darkBtnBg": { "type": "string", "maxLength": 30 },
+        "darkBtnText": { "type": "string", "maxLength": 30 },
+        "darkBtnHover": { "type": "string", "maxLength": 30 },
+        "darkLink": { "type": "string", "maxLength": 30 },
+        "darkLinkHover": { "type": "string", "maxLength": 30 },
+        "darkBorder": { "type": "string", "maxLength": 30 },
+        "darkCardBg": { "type": "string", "maxLength": 30 },
+        "darkIcon": { "type": "string", "maxLength": 30 },
+        "lightBg": { "type": "string", "maxLength": 30 },
+        "lightBody": { "type": "string", "maxLength": 30 },
+        "lightHeading": { "type": "string", "maxLength": 30 },
+        "lightBtnBg": { "type": "string", "maxLength": 30 },
+        "lightBtnText": { "type": "string", "maxLength": 30 },
+        "lightBtnHover": { "type": "string", "maxLength": 30 },
+        "lightLink": { "type": "string", "maxLength": 30 },
+        "lightLinkHover": { "type": "string", "maxLength": 30 },
+        "lightBorder": { "type": "string", "maxLength": 30 },
+        "lightCardBg": { "type": "string", "maxLength": 30 },
+        "lightIcon": { "type": "string", "maxLength": 30 },
+        "headingFont": { "type": "string", "maxLength": 50 },
+        "bodyFont": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["goldAccent", "headingFont", "bodyFont"]
+    },
+    "Milestone": {
+      "title": "Milestone",
+      "description": "About page vertical filmstrip timeline milestone",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 150 },
+        "body": { "type": "string", "maxLength": 2000 },
+        "photoUrl": { "type": "string", "maxLength": 1000 },
+        "order": { "type": "number" },
+        "year": { "type": "string", "maxLength": 20 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "body", "order"]
+    },
+    "Service": {
+      "title": "Service",
+      "description": "Offered AV/production service with category link",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 120 },
+        "shortDescription": { "type": "string", "maxLength": 300 },
+        "detailedDescription": { "type": "string", "maxLength": 2500 },
+        "categoryId": { "type": "string", "maxLength": 100 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "shortDescription", "detailedDescription", "order"]
+    },
+    "PortfolioCategory": {
+      "title": "PortfolioCategory",
+      "description": "Category organizing portfolio works",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "maxLength": 60 },
+        "slug": { "type": "string", "maxLength": 60 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "slug", "order"]
+    },
+    "PortfolioItem": {
+      "title": "PortfolioItem",
+      "description": "A creative piece in the portfolio",
+      "type": "object",
+      "properties": {
+        "categoryId": { "type": "string", "maxLength": 100 },
+        "title": { "type": "string", "maxLength": 150 },
+        "mediaType": { "type": "string", "enum": ["photo", "video", "graphic", "audio"] },
+        "mediaUrl": { "type": "string", "maxLength": 1000 },
+        "videoSource": { "type": "string", "enum": ["upload", "embed"] },
+        "description": { "type": "string", "maxLength": 1000 },
+        "showDescription": { "type": "boolean" },
+        "altText": { "type": "string", "maxLength": 300 },
+        "order": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["categoryId", "title", "mediaType", "mediaUrl", "order"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Client testimonial or review",
+      "type": "object",
+      "properties": {
+        "reviewerName": { "type": "string", "maxLength": 100 },
+        "rating": { "type": "number" },
+        "reviewText": { "type": "string", "maxLength": 2000 },
+        "source": { "type": "string", "enum": ["Google", "Trustpilot", "Other"] },
+        "status": { "type": "string", "enum": ["Live", "Archived"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["reviewerName", "rating", "reviewText", "source", "status"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Client booking inquiry submission",
+      "type": "object",
+      "properties": {
+        "clientName": { "type": "string", "maxLength": 120 },
+        "email": { "type": "string", "maxLength": 120 },
+        "phone": { "type": "string", "maxLength": 50 },
+        "serviceId": { "type": "string", "maxLength": 100 },
+        "serviceName": { "type": "string", "maxLength": 120 },
+        "dateType": { "type": "string", "enum": ["single", "range"] },
+        "dateValue": { "type": "string", "maxLength": 50 },
+        "endDateValue": { "type": "string", "maxLength": 50 },
+        "projectDescription": { "type": "string", "maxLength": 4000 },
+        "status": { "type": "string", "enum": ["New", "Approved", "Canceled", "Rescheduled"] },
+        "adminNotes": { "type": "string", "maxLength": 3000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientName", "email", "phone", "serviceName", "dateType", "dateValue", "projectDescription", "status"]
+    },
+    "FAQ": {
+      "title": "FAQ",
+      "description": "Booking FAQ question and answer",
+      "type": "object",
+      "properties": {
+        "question": { "type": "string", "maxLength": 250 },
+        "answer": { "type": "string", "maxLength": 2500 },
+        "order": { "type": "number" }
+      },
+      "required": ["question", "answer", "order"]
+    },
+    "BlogPost": {
+      "title": "BlogPost",
+      "description": "Studio journal or article",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "maxLength": 200 },
+        "slug": { "type": "string", "maxLength": 200 },
+        "featuredImage": { "type": "string", "maxLength": 1000 },
+        "excerpt": { "type": "string", "maxLength": 500 },
+        "content": { "type": "string", "maxLength": 20000 },
+        "status": { "type": "string", "enum": ["Draft", "Published"] },
+        "metaTitle": { "type": "string", "maxLength": 120 },
+        "metaDescription": { "type": "string", "maxLength": 300 },
+        "ogImage": { "type": "string", "maxLength": 1000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "publishedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "slug", "excerpt", "content", "status"]
+    },
+    "BlogComment": {
+      "title": "BlogComment",
+      "description": "Reader comment submitted on a blog post",
+      "type": "object",
+      "properties": {
+        "postId": { "type": "string", "maxLength": 100 },
+        "authorName": { "type": "string", "maxLength": 100 },
+        "authorEmail": { "type": "string", "maxLength": 120 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "status": { "type": "string", "enum": ["Pending", "Approved"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["postId", "authorName", "authorEmail", "content", "status"]
+    }
+  },
+  "firestore": {
+    "/site_settings/{docId}": {
+      "schema": { "$ref": "SiteSettings" },
+      "description": "Singleton configuration for website content and brand information"
+    },
+    "/theme_tokens/{docId}": {
+      "schema": { "$ref": "ThemeTokens" },
+      "description": "CSS design tokens and typography configuration"
+    },
+    "/milestones/{milestoneId}": {
+      "schema": { "$ref": "Milestone" },
+      "description": "About timeline milestones"
+    },
+    "/services/{serviceId}": {
+      "schema": { "$ref": "Service" },
+      "description": "Creative production services"
+    },
+    "/portfolio_categories/{categoryId}": {
+      "schema": { "$ref": "PortfolioCategory" },
+      "description": "Portfolio work classification categories"
+    },
+    "/portfolio_items/{itemId}": {
+      "schema": { "$ref": "PortfolioItem" },
+      "description": "Individual portfolio media items"
+    },
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "Review" },
+      "description": "Client reviews with Live/Archived status"
+    },
+    "/bookings/{bookingId}": {
+      "schema": { "$ref": "Booking" },
+      "description": "Booking inquiries submitted by clients"
+    },
+    "/faqs/{faqId}": {
+      "schema": { "$ref": "FAQ" },
+      "description": "Frequently asked questions displayed on booking page"
+    },
+    "/blog_posts/{postId}": {
+      "schema": { "$ref": "BlogPost" },
+      "description": "Articles and studio news"
+    },
+    "/blog_comments/{commentId}": {
+      "schema": { "$ref": "BlogComment" },
+      "description": "Comments left on blog articles with moderation status"
+    }
+  }
+}

@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --color-navy: #192c45;
+    --color-gold: #f9931f;
+    --font-heading: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+
+    /* Dark Mode (Default) - Grounded in deep cinematic navy/charcoal */
+    --bg-color: #0b131e;
+    --text-body: #cbd5e1;
+    --text-heading: #ffffff;
+    --btn-bg: #f9931f;
+    --btn-text: #192c45;
+    --btn-hover: #ffa73e;
+    --link-color: #f9931f;
+    --link-hover: #ffbe6b;
+    --border-color: rgba(249, 147, 31, 0.18);
+    --card-bg: #132032;
+    --icon-color: #f9931f;
+  }
+
+  [data-theme="light"] {
+    /* Light Mode - Crisp architectural gallery white with deep brand navy headers */
+    --bg-color: #f8fafc;
+    --text-body: #334155;
+    --text-heading: #192c45;
+    --btn-bg: #192c45;
+    --btn-text: #ffffff;
+    --btn-hover: #223a5b;
+    --link-color: #192c45;
+    --link-hover: #f9931f;
+    --border-color: rgba(25, 44, 69, 0.12);
+    --card-bg: #ffffff;
+    --icon-color: #192c45;
+  }
+
+  body {
+    background-color: var(--bg-color);
+    color: var(--text-body);
+    font-family: var(--font-body);
+    overflow-x: hidden;
+    transition: background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1), color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-heading {
+    font-family: var(--font-heading);
+    letter-spacing: -0.025em;
+  }
+}
+
+/* Navigation Item Staggered Entrance */
+@keyframes navItemReveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-nav-item {
+  animation: navItemReveal 0.24s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Skip link accessibility */
+.skip-link {
+  position: absolute;
+  top: -60px;
+  left: 20px;
+  background: var(--color-gold);
+  color: #192c45;
+  padding: 10px 18px;
+  font-weight: 700;
+  z-index: 99999;
+  border-radius: 4px;
+  transition: top 0.2s ease-in-out;
+}
+.skip-link:focus {
+  top: 20px;
+}
+
