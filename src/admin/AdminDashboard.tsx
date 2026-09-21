@@ -38,9 +38,22 @@ import {
   ChevronRight,
   Filter,
   Sparkles,
-  RefreshCw
+  RefreshCw,
+  Database,
+  CloudUpload,
+  CloudDownload,
+  Zap,
+  Server
 } from 'lucide-react';
-import { getStoredAdminPassword, updateAdminPassword } from '../supabase';
+import {
+  getStoredAdminPassword,
+  updateAdminPassword,
+  getStoredSupabaseConfig,
+  updateSupabaseConfig,
+  clearSupabaseConfig,
+  testSupabaseConnection,
+  SUPABASE_SQL_SCHEMA
+} from '../supabase';
 
 interface AdminDashboardProps {
   user: { email: string; id: string };
@@ -70,7 +83,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     socialLinks,
     adminMutate,
     updateThemeTokens,
-    refreshAdminData
+    refreshAdminData,
+    syncAllToSupabase,
+    syncFromSupabase
   } = useData();
 
   // Navigation tabs (Decluttered into 4 clean primary modules)
@@ -79,7 +94,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Sub-tabs
   const [portfolioSubTab, setPortfolioSubTab] = useState<'items' | 'categories' | 'services' | 'milestones'>('items');
   const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs'>('articles');
-  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'appearance'>('security');
+  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'appearance' | 'database'>('security');
+
+  // Supabase Configuration & Migration states
+  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getStoredSupabaseConfig().url);
+  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => getStoredSupabaseConfig().anonKey);
+  const [showSupabaseKey, setShowSupabaseKey] = useState(false);
+  const [supabaseTesting, setSupabaseTesting] = useState(false);
+  const [supabaseTestResult, setSupabaseTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+  const [supabaseMigrating, setSupabaseMigrating] = useState(false);
+  const [supabaseMigrationResult, setSupabaseMigrationResult] = useState<{ success: boolean; message: string; counts?: Record<string, number>; errors?: string[] } | null>(null);
+  const [supabaseSyncing, setSupabaseSyncing] = useState(false);
+  const [supabaseSyncResult, setSupabaseSyncResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [copiedSql, setCopiedSql] = useState(false);
+  const [showSqlViewer, setShowSqlViewer] = useState(false);
 
   // Filter & Search states
   const [bookingFilter, setBookingFilter] = useState<'All' | 'New' | 'Approved' | 'Rescheduled' | 'Canceled'>('All');
@@ -1174,6 +1202,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               >
                 Branding & Accent
               </button>
+              <button
+                onClick={() => setSettingsSubTab('database')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  settingsSubTab === 'database'
+                    ? 'bg-[var(--color-gold)] text-black'
+                    : 'text-white/60 hover:text-white bg-[#141414]'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>Supabase Cloud DB</span>
+              </button>
             </div>
 
             {/* 4.A: Password & Security */}
@@ -1454,6 +1493,339 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <Save className="w-4 h-4" />
                     <span>Save Theme Settings</span>
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* 4.D: Supabase Cloud Database & Storage */}
+            {settingsSubTab === 'database' && (
+              <div className="max-w-4xl space-y-6">
+                {/* Connection Status Card */}
+                <div className="p-4 rounded-lg border border-[var(--color-gold)]/40 bg-[#141414] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-10 h-10 rounded bg-black border border-[var(--color-gold)]/50 flex items-center justify-center text-[var(--color-gold)] shrink-0">
+                      <Database className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold uppercase text-xs text-white tracking-wider">
+                          Supabase PostgreSQL Database
+                        </h3>
+                        {supabaseUrlInput ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Configured
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 border border-amber-500/40 text-amber-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                            Unconfigured
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-white/60 mt-0.5">
+                        {supabaseUrlInput
+                          ? `Connected project: ${supabaseUrlInput}`
+                          : 'All data is currently stored in local browser cache and memory. Connect Supabase for multi-device sync & persistent cloud storage.'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <a
+                      href="https://supabase.com/dashboard"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 rounded border border-white/20 bg-black hover:border-[var(--color-gold)]/50 text-white/80 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-colors"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Supabase Dashboard</span>
+                    </a>
+                  </div>
+                </div>
+
+                {/* Test Result / Status Banner */}
+                {supabaseTestResult && (
+                  <div
+                    className={`p-3.5 rounded text-xs flex items-start gap-2.5 border ${
+                      supabaseTestResult.success
+                        ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                        : 'bg-red-950/40 border-red-500/50 text-red-300'
+                    }`}
+                  >
+                    {supabaseTestResult.success ? (
+                      <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-400" />
+                    ) : (
+                      <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5 text-red-400" />
+                    )}
+                    <div>
+                      <p className="font-semibold">{supabaseTestResult.message}</p>
+                      {supabaseTestResult.latencyMs !== undefined && (
+                        <p className="text-[11px] opacity-80 font-mono mt-0.5">
+                          Round-trip response latency: {supabaseTestResult.latencyMs}ms
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* API Credentials Configuration */}
+                <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-[var(--color-gold)]" />
+                      <h2 className="font-bold uppercase text-sm text-white">Project API Credentials</h2>
+                    </div>
+                    <span className="text-[11px] font-mono text-white/40">From Project Settings &gt; API</span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold mb-1">
+                        Supabase Project URL *
+                      </label>
+                      <input
+                        type="url"
+                        placeholder="https://your-project-id.supabase.co"
+                        value={supabaseUrlInput}
+                        onChange={(e) => setSupabaseUrlInput(e.target.value)}
+                        className="w-full px-3.5 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white font-mono placeholder:text-white/30 outline-none"
+                      />
+                      <p className="text-[11px] text-white/40 mt-1">
+                        The REST and PostgreSQL API endpoint of your Supabase instance.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold mb-1">
+                        Supabase Public / Anon API Key *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type={showSupabaseKey ? 'text' : 'password'}
+                          placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                          value={supabaseKeyInput}
+                          onChange={(e) => setSupabaseKeyInput(e.target.value)}
+                          className="w-full px-3.5 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white font-mono placeholder:text-white/30 outline-none pr-10"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSupabaseKey(!showSupabaseKey)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white cursor-pointer"
+                        >
+                          {showSupabaseKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-white/40 mt-1">
+                        The public anonymous key (safe for browser client-side RLS enforcement).
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+                          showToast('Supabase credentials saved.');
+                        }}
+                        className="px-4 py-2 bg-[var(--color-gold)] hover:bg-[var(--color-gold-hover)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save Credentials</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={supabaseTesting || !supabaseUrlInput || !supabaseKeyInput}
+                        onClick={async () => {
+                          setSupabaseTesting(true);
+                          setSupabaseTestResult(null);
+                          try {
+                            updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+                            const res = await testSupabaseConnection();
+                            setSupabaseTestResult(res);
+                          } catch (err: any) {
+                            setSupabaseTestResult({ success: false, message: err?.message || 'Connection failed' });
+                          } finally {
+                            setSupabaseTesting(false);
+                          }
+                        }}
+                        className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white border border-white/20 font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${supabaseTesting ? 'animate-spin' : ''}`} />
+                        <span>{supabaseTesting ? 'Testing Ping...' : 'Test Connection'}</span>
+                      </button>
+
+                      {(supabaseUrlInput || supabaseKeyInput) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Clear Supabase configuration and revert to local storage?')) {
+                              clearSupabaseConfig();
+                              setSupabaseUrlInput('');
+                              setSupabaseKeyInput('');
+                              setSupabaseTestResult(null);
+                              showToast('Supabase configuration cleared.');
+                            }
+                          }}
+                          className="px-3 py-2 text-red-400 hover:text-red-300 text-xs font-mono cursor-pointer ml-auto"
+                        >
+                          Clear Config
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cloud Migration & Synchronization Tool */}
+                <div className="p-6 rounded-lg border border-[var(--color-gold)]/30 bg-[#141414] space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <CloudUpload className="w-4 h-4 text-[var(--color-gold)]" />
+                      <h2 className="font-bold uppercase text-sm text-white">Full Cloud Migration (Firebase &gt; Supabase)</h2>
+                    </div>
+                    <span className="text-[11px] font-mono text-[var(--color-gold)] font-bold">11 Tables Ready</span>
+                  </div>
+
+                  <p className="text-xs text-white/70 leading-relaxed">
+                    Instantly migrate all existing studio content into your connected Supabase PostgreSQL database. This populates all tables: Site Settings, Theme Tokens, Milestones, Portfolio Categories, Services, Portfolio Items, Reviews, Bookings, FAQs, Blog Posts, and Comments.
+                  </p>
+
+                  {supabaseMigrationResult && (
+                    <div
+                      className={`p-4 rounded text-xs space-y-2 border ${
+                        supabaseMigrationResult.success
+                          ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
+                          : 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 font-bold">
+                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                        <span>{supabaseMigrationResult.message}</span>
+                      </div>
+                      {supabaseMigrationResult.counts && (
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/10 font-mono text-[11px]">
+                          {Object.entries(supabaseMigrationResult.counts).map(([tbl, count]) => (
+                            <div key={tbl} className="bg-black/40 px-2 py-1 rounded">
+                              <span className="text-white/50">{tbl}:</span> <span className="font-bold text-white">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {supabaseSyncResult && (
+                    <div className="p-3.5 rounded text-xs bg-emerald-950/40 border border-emerald-500/50 text-emerald-300 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                      <span>{supabaseSyncResult.message}</span>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                    <button
+                      type="button"
+                      disabled={supabaseMigrating || !supabaseUrlInput || !supabaseKeyInput}
+                      onClick={async () => {
+                        if (!confirm('This will upload all current studio data and overwrite matching IDs in Supabase. Proceed?')) return;
+                        setSupabaseMigrating(true);
+                        setSupabaseMigrationResult(null);
+                        try {
+                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+                          const res = await syncAllToSupabase();
+                          setSupabaseMigrationResult(res);
+                          showToast('Data migration to Supabase completed.');
+                        } catch (err: any) {
+                          setSupabaseMigrationResult({
+                            success: false,
+                            message: err?.message || 'Migration error',
+                            errors: [err?.message || 'Unknown error']
+                          });
+                        } finally {
+                          setSupabaseMigrating(false);
+                        }
+                      }}
+                      className="px-5 py-2.5 bg-[var(--color-gold)] hover:bg-[var(--color-gold-hover)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      <CloudUpload className={`w-4 h-4 ${supabaseMigrating ? 'animate-bounce' : ''}`} />
+                      <span>{supabaseMigrating ? 'Migrating Records...' : 'Push All Studio Data to Supabase'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={supabaseSyncing || !supabaseUrlInput || !supabaseKeyInput}
+                      onClick={async () => {
+                        if (!confirm('Pull latest data from Supabase into your local browser workspace?')) return;
+                        setSupabaseSyncing(true);
+                        setSupabaseSyncResult(null);
+                        try {
+                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
+                          const res = await syncFromSupabase();
+                          setSupabaseSyncResult(res);
+                          showToast('Data synced from Supabase.');
+                        } catch (err: any) {
+                          setSupabaseSyncResult({ success: false, message: err?.message || 'Sync error' });
+                        } finally {
+                          setSupabaseSyncing(false);
+                        }
+                      }}
+                      className="px-4 py-2.5 bg-black hover:bg-neutral-900 text-white border border-white/20 font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      <CloudDownload className={`w-4 h-4 ${supabaseSyncing ? 'animate-spin' : ''}`} />
+                      <span>{supabaseSyncing ? 'Pulling...' : 'Pull Latest from Supabase'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* SQL Schema & Setup Guide */}
+                <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
+                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-4 h-4 text-[var(--color-gold)]" />
+                      <h2 className="font-bold uppercase text-sm text-white">Database SQL Schema & Policies</h2>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+                          setCopiedSql(true);
+                          setTimeout(() => setCopiedSql(false), 3000);
+                          showToast('SQL setup script copied to clipboard.');
+                        }}
+                        className="px-3 py-1 bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25 text-[var(--color-gold)] rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
+                      >
+                        {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                        <span>{copiedSql ? 'Copied Script!' : 'Copy SQL Script'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-black/50 p-4 rounded border border-white/5 space-y-2 text-xs text-white/70">
+                    <p className="font-bold text-white uppercase text-[11px] tracking-wider">Quick Setup Instructions:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-white/70 font-mono text-[11px]">
+                      <li>Open your Supabase Project dashboard: <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-[var(--color-gold)] underline">supabase.com/dashboard</a></li>
+                      <li>Navigate to the <strong>SQL Editor</strong> tab on the left sidebar.</li>
+                      <li>Click <strong>Copy SQL Script</strong> above, paste it into the editor, and click <strong>Run</strong>.</li>
+                      <li>All 11 tables, RLS security policies, and realtime publications will be created instantly!</li>
+                    </ol>
+                  </div>
+
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSqlViewer(!showSqlViewer)}
+                      className="text-xs font-mono text-[var(--color-gold)] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showSqlViewer ? 'rotate-90' : ''}`} />
+                      <span>{showSqlViewer ? 'Hide SQL Script Viewer' : 'View Full SQL Schema Script'}</span>
+                    </button>
+
+                    {showSqlViewer && (
+                      <pre className="mt-3 p-4 bg-black border border-white/10 rounded font-mono text-[11px] text-white/80 overflow-x-auto max-h-96 leading-relaxed select-all">
+                        {SUPABASE_SQL_SCHEMA}
+                      </pre>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

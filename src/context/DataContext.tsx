@@ -26,6 +26,15 @@ import {
   INITIAL_BLOG_COMMENTS,
   INITIAL_SOCIAL_LINKS
 } from '../initialData';
+import {
+  getSupabaseClient,
+  fetchFromSupabase,
+  fetchSingletonFromSupabase,
+  upsertToSupabase,
+  deleteFromSupabase,
+  pushAllDataToSupabase,
+  toCamelCase
+} from '../supabase';
 
 interface DataContextType {
   siteSettings: SiteSettings;
@@ -64,7 +73,9 @@ interface DataContextType {
   ) => Promise<{ success: boolean; error?: string }>;
   syncToGoldGroup: (group: 'core' | 'interactive' | 'structure' | 'typography' | 'all') => void;
   updateThemeTokens: (newTokens: Partial<ThemeTokens>) => void;
-  refreshAdminData: (token: string) => Promise<void>;
+  refreshAdminData: (token?: string) => Promise<void>;
+  syncAllToSupabase: () => Promise<{ success: boolean; message: string; counts: Record<string, number>; errors: string[] }>;
+  syncFromSupabase: () => Promise<{ success: boolean; message: string }>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -312,7 +323,14 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Ignore in non-browser envs
     }
 
-    // 2. Background server sync
+    // 2. Direct Supabase sync if client is configured
+    try {
+      upsertToSupabase('bookings', newBooking).catch(err => {
+        console.warn('Supabase booking sync notice:', err);
+      });
+    } catch {}
+
+    // 3. Background server sync
     try {
       fetch('/api/public/bookings', {
         method: 'POST',
@@ -345,6 +363,12 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLocal('blog_comments', next);
       return next;
     });
+
+    try {
+      upsertToSupabase('blog_comments', newComment).catch(err => {
+        console.warn('Supabase comment sync notice:', err);
+      });
+    } catch {}
 
     try {
       fetch('/api/public/comments', {
@@ -500,7 +524,36 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setLocal('social_links', data);
     }
 
-    // 2. Synchronize to server with auth token in background
+    // 2. Direct Supabase sync if client is active
+    try {
+      const tableMap: Record<string, string> = {
+        site_settings: 'site_settings',
+        theme_tokens: 'theme_tokens',
+        milestones: 'milestones',
+        services: 'services',
+        portfolio_categories: 'portfolio_categories',
+        categories: 'portfolio_categories',
+        portfolio_items: 'portfolio_items',
+        reviews: 'reviews',
+        bookings: 'bookings',
+        faqs: 'faqs',
+        blog_posts: 'blog_posts',
+        blog_comments: 'blog_comments'
+      };
+      const supabaseTable = tableMap[collection];
+      if (supabaseTable) {
+        if (action === 'delete' && id) {
+          deleteFromSupabase(supabaseTable, id).catch(() => {});
+        } else if (action === 'create' || action === 'update') {
+          const docToSync = (supabaseTable === 'site_settings' || supabaseTable === 'theme_tokens')
+            ? { id: 'default', ...data }
+            : { id: id || (data && data.id), ...data };
+          upsertToSupabase(supabaseTable, docToSync).catch(() => {});
+        }
+      }
+    } catch {}
+
+    // 3. Synchronize to server with auth token in background
     try {
       let authToken = token;
       if (!authToken) {
@@ -593,14 +646,161 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const syncFromSupabase = async (): Promise<{ success: boolean; message: string }> => {
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      return { success: false, message: 'Supabase credentials not configured in Settings.' };
+    }
+
+    try {
+      const [
+        settings,
+        tokens,
+        dbMilestones,
+        dbServices,
+        dbCats,
+        dbItems,
+        dbReviews,
+        dbBookings,
+        dbFaqs,
+        dbPosts,
+        dbComments
+      ] = await Promise.all([
+        fetchSingletonFromSupabase<SiteSettings>('site_settings'),
+        fetchSingletonFromSupabase<ThemeTokens>('theme_tokens'),
+        fetchFromSupabase<Milestone>('milestones'),
+        fetchFromSupabase<Service>('services'),
+        fetchFromSupabase<PortfolioCategory>('portfolio_categories'),
+        fetchFromSupabase<PortfolioItem>('portfolio_items'),
+        fetchFromSupabase<Review>('reviews'),
+        fetchFromSupabase<Booking>('bookings'),
+        fetchFromSupabase<FAQ>('faqs'),
+        fetchFromSupabase<BlogPost>('blog_posts'),
+        fetchFromSupabase<BlogComment>('blog_comments'),
+      ]);
+
+      if (settings && settings.heroTitle) {
+        setSiteSettings(prev => ({ ...prev, ...settings }));
+        setLocal('settings', settings);
+      }
+      if (tokens && tokens.goldAccent) {
+        setThemeTokens(prev => ({ ...prev, ...tokens }));
+        setLocal('theme_tokens', tokens);
+      }
+      if (dbMilestones && dbMilestones.length > 0) {
+        setMilestones(dbMilestones);
+        setLocal('milestones', dbMilestones);
+      }
+      if (dbServices && dbServices.length > 0) {
+        setServices(dbServices);
+        setLocal('services', dbServices);
+      }
+      if (dbCats && dbCats.length > 0) {
+        setCategories(dbCats);
+        setLocal('categories', dbCats);
+      }
+      if (dbItems && dbItems.length > 0) {
+        setPortfolioItems(dbItems);
+        setLocal('portfolio_items', dbItems);
+      }
+      if (dbReviews && dbReviews.length > 0) {
+        setReviews(dbReviews);
+        setLocal('reviews', dbReviews);
+      }
+      if (dbBookings && dbBookings.length > 0) {
+        setBookings(dbBookings);
+        setLocal('bookings', dbBookings);
+      }
+      if (dbFaqs && dbFaqs.length > 0) {
+        setFaqs(dbFaqs);
+        setLocal('faqs', dbFaqs);
+      }
+      if (dbPosts && dbPosts.length > 0) {
+        setBlogPosts(dbPosts);
+        setLocal('blog_posts', dbPosts);
+      }
+      if (dbComments && dbComments.length > 0) {
+        setBlogComments(dbComments);
+        setLocal('blog_comments', dbComments);
+      }
+
+      return { success: true, message: 'Successfully synced all data from Supabase!' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Failed to sync from Supabase' };
+    }
+  };
+
+  const syncAllToSupabase = async () => {
+    return await pushAllDataToSupabase({
+      siteSettings,
+      themeTokens,
+      milestones,
+      services,
+      categories,
+      portfolioItems,
+      reviews,
+      bookings,
+      faqs,
+      blogPosts,
+      blogComments
+    });
+  };
+
   // Keep live sync active on window focus and storage events
   useEffect(() => {
     // Initial fetch on mount
     refreshAdminData();
 
+    // Check and hydrate from Supabase if configured
+    syncFromSupabase().catch(() => {});
+
+    // Subscribe to Supabase Realtime changes
+    const supabase = getSupabaseClient();
+    let realtimeChannel: any = null;
+    if (supabase) {
+      realtimeChannel = supabase.channel('av-realtime-sub')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload: any) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const newBooking = toCamelCase(payload.new) as Booking;
+            setBookings(prev => {
+              if (prev.some(b => b.id === newBooking.id)) return prev;
+              const next = [newBooking, ...prev];
+              setLocal('bookings', next);
+              return next;
+            });
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            const updatedBooking = toCamelCase(payload.new) as Booking;
+            setBookings(prev => {
+              const next = prev.map(b => b.id === updatedBooking.id ? updatedBooking : b);
+              setLocal('bookings', next);
+              return next;
+            });
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setBookings(prev => {
+              const next = prev.filter(b => b.id !== payload.old.id);
+              setLocal('bookings', next);
+              return next;
+            });
+          }
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blog_comments' }, (payload: any) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            const newComm = toCamelCase(payload.new) as BlogComment;
+            setBlogComments(prev => {
+              if (prev.some(c => c.id === newComm.id)) return prev;
+              const next = [newComm, ...prev];
+              setLocal('blog_comments', next);
+              return next;
+            });
+          }
+        })
+        .subscribe();
+    }
+
     // Sync on tab focus or storage change
     const handleFocus = () => {
       refreshAdminData();
+      syncFromSupabase().catch(() => {});
     };
 
     const handleStorage = (e: StorageEvent) => {
@@ -641,6 +841,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('av-booking-created', handleCustomBooking);
       clearInterval(interval);
+      if (supabase && realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
     };
   }, []);
 
@@ -667,7 +870,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         adminMutate,
         syncToGoldGroup,
         updateThemeTokens,
-        refreshAdminData
+        refreshAdminData,
+        syncAllToSupabase,
+        syncFromSupabase
       }}
     >
       {children}
