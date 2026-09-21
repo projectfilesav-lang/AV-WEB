@@ -43,7 +43,8 @@ import {
   CloudUpload,
   CloudDownload,
   Zap,
-  Server
+  Server,
+  Megaphone
 } from 'lucide-react';
 import {
   getStoredAdminPassword,
@@ -94,8 +95,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Sub-tabs
   const [portfolioSubTab, setPortfolioSubTab] = useState<'items' | 'categories' | 'services' | 'milestones'>('items');
-  const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs'>('articles');
-  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'appearance' | 'database'>('security');
+  const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs' | 'banner'>('articles');
+  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'banner' | 'appearance' | 'database'>('security');
 
   // Supabase Configuration & Migration states
   const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getStoredSupabaseConfig().url);
@@ -289,6 +290,248 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       (item.description || '').toLowerCase().includes(portfolioSearch.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  // Save Advertisement & Announcement Banner handler
+  const [isSavingBanner, setIsSavingBanner] = useState(false);
+  const handleSaveBanner = async () => {
+    setIsSavingBanner(true);
+    try {
+      await adminMutate('update', 'site_settings', 'active', studioProfile, token);
+      showToast('Announcement & advertisement banner saved and published successfully.');
+    } catch {
+      showToast('Error saving banner. Please try again.');
+    } finally {
+      setIsSavingBanner(false);
+    }
+  };
+
+  const renderAdvertisementBannerEditor = () => (
+    <div className="max-w-3xl p-6 rounded-lg border border-white/10 bg-[#141414] space-y-6 text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded bg-black border border-[var(--color-gold)]/40 flex items-center justify-center text-[var(--color-gold)] shrink-0 shadow-sm">
+            <Megaphone className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="font-bold uppercase text-sm text-white flex items-center gap-2">
+              Top Advertisement & Announcement Banner
+            </h2>
+            <p className="text-white/60 text-xs mt-0.5">
+              Displays a high-impact announcement bar at the very top of all website pages for promotions or notices.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+              studioProfile.promoBannerEnabled
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                : 'bg-white/10 text-white/50 border border-white/15'
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                studioProfile.promoBannerEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-white/40'
+              }`}
+            />
+            {studioProfile.promoBannerEnabled ? 'Active on Website' : 'Disabled / Hidden'}
+          </span>
+        </div>
+      </div>
+
+      {/* Visibility Toggle */}
+      <div className="flex items-center justify-between p-4 rounded-lg bg-black/60 border border-white/10">
+        <div>
+          <label className="font-bold text-white text-xs block">
+            SHOW BANNER ON WEBSITE
+          </label>
+          <p className="text-white/50 text-[11px] mt-0.5">
+            When turned ON, this banner appears above the navigation header on both desktop and mobile devices.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            setStudioProfile(prev => ({
+              ...prev,
+              promoBannerEnabled: !prev.promoBannerEnabled
+            }))
+          }
+          className={`relative inline-flex h-6 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+            studioProfile.promoBannerEnabled ? 'bg-[var(--color-gold)]' : 'bg-white/20'
+          }`}
+          role="switch"
+          aria-checked={studioProfile.promoBannerEnabled}
+        >
+          <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-black shadow-md ring-0 transition duration-200 ease-in-out ${
+              studioProfile.promoBannerEnabled ? 'translate-x-6' : 'translate-x-0'
+            }`}
+          />
+        </button>
+      </div>
+
+      {/* Live Banner Preview */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-white/60 font-semibold tracking-wider text-[11px] uppercase">
+            LIVE PREVIEW (HOW VISITORS SEE IT ON SITE)
+          </label>
+          <span className="text-[10px] text-[var(--color-gold)] font-mono">
+            {studioProfile.promoBannerEnabled ? '● Currently Live on Site' : '○ Currently Inactive'}
+          </span>
+        </div>
+        <div
+          className={`w-full p-3 rounded border text-center text-xs font-mono tracking-wider transition-all flex items-center justify-center gap-2 ${
+            studioProfile.promoBannerEnabled
+              ? 'bg-[#0d0d0c] border-[var(--color-gold)]/50 text-[var(--color-gold)] shadow-md'
+              : 'bg-black/40 border-dashed border-white/20 text-white/40'
+          }`}
+        >
+          <Megaphone className="w-3.5 h-3.5 shrink-0 opacity-75" />
+          <span className="truncate">
+            {studioProfile.promoBannerText || 'Enter announcement message below...'}
+          </span>
+        </div>
+      </div>
+
+      {/* Banner Message Input */}
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between">
+          <label className="block text-white/80 font-bold tracking-wider uppercase text-[11px]">
+            ANNOUNCEMENT / ADVERTISEMENT MESSAGE
+          </label>
+          <span className="text-white/40 text-[10px] font-mono">
+            {(studioProfile.promoBannerText || '').length} characters (recommended: 30 - 100)
+          </span>
+        </div>
+        <textarea
+          rows={3}
+          value={studioProfile.promoBannerText || ''}
+          onChange={(e) =>
+            setStudioProfile(prev => ({
+              ...prev,
+              promoBannerText: e.target.value
+            }))
+          }
+          placeholder="e.g., Now accepting bookings for Autumn 2026 commercial & narrative production cycles."
+          className="w-full px-3 py-2.5 bg-black border border-white/20 rounded text-white text-xs focus:border-[var(--color-gold)] focus:outline-none leading-relaxed"
+        />
+      </div>
+
+      {/* One-Click Presets */}
+      <div className="space-y-2">
+        <label className="block text-white/50 text-[10px] uppercase tracking-wider font-semibold">
+          QUICK TEMPLATES & INSPIRATION (CLICK TO LOAD)
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              setStudioProfile(prev => ({
+                ...prev,
+                promoBannerEnabled: true,
+                promoBannerText: 'Now accepting bookings for Autumn 2026 commercial & narrative production cycles.'
+              }))
+            }
+            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
+          >
+            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
+              Booking Season Open
+            </span>
+            <span className="text-white/60 group-hover:text-white line-clamp-1">
+              Now accepting bookings for Autumn 2026 commercial & narrative production cycles.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setStudioProfile(prev => ({
+                ...prev,
+                promoBannerEnabled: true,
+                promoBannerText: 'Special limited-time offer: 15% discount on multi-day 4K commercial and narrative shoots.'
+              }))
+            }
+            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
+          >
+            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
+              Special Promo / Discount
+            </span>
+            <span className="text-white/60 group-hover:text-white line-clamp-1">
+              Special limited-time offer: 15% discount on multi-day 4K commercial shoots.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setStudioProfile(prev => ({
+                ...prev,
+                promoBannerEnabled: true,
+                promoBannerText: 'New cinema gear in inventory: ARRI Alexa 35 & Cooke Anamorphic /i lenses ready for hire.'
+              }))
+            }
+            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
+          >
+            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
+              Cinema Gear Upgrade
+            </span>
+            <span className="text-white/60 group-hover:text-white line-clamp-1">
+              New cinema gear in inventory: ARRI Alexa 35 & Cooke Anamorphic /i lenses.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setStudioProfile(prev => ({
+                ...prev,
+                promoBannerEnabled: true,
+                promoBannerText: 'Film & Sound stages fully booked this weekend for private premiere screening.'
+              }))
+            }
+            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
+          >
+            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
+              Studio Schedule Notice
+            </span>
+            <span className="text-white/60 group-hover:text-white line-clamp-1">
+              Film & Sound stages fully booked this weekend for private premiere screening.
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* Save Action */}
+      <div className="pt-4 border-t border-white/10 flex items-center justify-between">
+        <button
+          type="button"
+          disabled={isSavingBanner}
+          onClick={handleSaveBanner}
+          className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer hover:brightness-105 transition-all shadow-xs disabled:opacity-50"
+        >
+          <Save className="w-4 h-4" />
+          <span>{isSavingBanner ? 'Saving...' : 'Save & Publish Banner'}</span>
+        </button>
+
+        {studioProfile.promoBannerEnabled && (
+          <button
+            type="button"
+            onClick={async () => {
+              const updated = { ...studioProfile, promoBannerEnabled: false };
+              setStudioProfile(updated);
+              await adminMutate('update', 'site_settings', 'active', updated, token);
+              showToast('Announcement banner disabled and hidden from website.');
+            }}
+            className="px-3 py-2 text-white/50 hover:text-rose-400 text-xs transition-colors cursor-pointer"
+          >
+            Disable & Hide Banner
+          </button>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed] flex flex-col font-sans">
@@ -1001,6 +1244,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 >
                   FAQs ({faqs.length})
                 </button>
+                <button
+                  onClick={() => setContentSubTab('banner')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    contentSubTab === 'banner'
+                      ? 'bg-[var(--color-gold)] text-black'
+                      : 'text-white/60 hover:text-white bg-[#141414]'
+                  }`}
+                >
+                  <Megaphone className="w-3.5 h-3.5" />
+                  <span>Advertisement Banner</span>
+                  {studioProfile.promoBannerEnabled && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  )}
+                </button>
               </div>
 
               {contentSubTab === 'articles' && (
@@ -1164,6 +1421,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ))}
               </div>
             )}
+
+            {/* Advertisement & Announcement Banner */}
+            {contentSubTab === 'banner' && renderAdvertisementBannerEditor()}
           </div>
         )}
 

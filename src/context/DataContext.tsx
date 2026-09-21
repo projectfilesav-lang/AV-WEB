@@ -589,6 +589,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refreshAdminData = async (token?: string) => {
     try {
+      // 1. If Supabase is connected, prefer syncing directly from Supabase first
+      const supabase = getSupabaseClient();
+      if (supabase) {
+        try {
+          const { data: dbBookings } = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
+          if (Array.isArray(dbBookings)) {
+            const converted = dbBookings.map(b => toCamelCase(b)) as Booking[];
+            setBookings(converted);
+            setLocal('bookings', converted);
+          }
+          const { data: dbComments } = await supabase.from('blog_comments').select('*').order('created_at', { ascending: false });
+          if (Array.isArray(dbComments)) {
+            const converted = dbComments.map(c => toCamelCase(c)) as BlogComment[];
+            setBlogComments(converted);
+            setLocal('blog_comments', converted);
+          }
+          return;
+        } catch {
+          // Gracefully continue to fallback endpoints
+        }
+      }
+
       let authToken = token;
       if (!authToken) {
         try {
@@ -607,42 +629,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 1. Try authenticated admin sync endpoint
+      // 2. Try authenticated admin sync endpoint
       let adminFetched = false;
       if (authToken) {
-        const headers: Record<string, string> = {
-          'Authorization': `Bearer ${authToken}`
-        };
-        const res = await fetch('/api/admin/data', { headers });
-        if (res.ok) {
-          const { data } = await res.json();
-          if (data) {
-            adminFetched = true;
-            if (Array.isArray(data.bookings)) {
-              setBookings(data.bookings);
-              setLocal('bookings', data.bookings);
-            }
-            if (Array.isArray(data.blogComments)) {
-              setBlogComments(data.blogComments);
-              setLocal('blog_comments', data.blogComments);
+        try {
+          const headers: Record<string, string> = {
+            'Authorization': `Bearer ${authToken}`
+          };
+          const res = await fetch('/api/admin/data', { headers });
+          if (res.ok) {
+            const { data } = await res.json();
+            if (data) {
+              adminFetched = true;
+              if (Array.isArray(data.bookings)) {
+                setBookings(data.bookings);
+                setLocal('bookings', data.bookings);
+              }
+              if (Array.isArray(data.blogComments)) {
+                setBlogComments(data.blogComments);
+                setLocal('blog_comments', data.blogComments);
+              }
             }
           }
+        } catch {
+          // Gracefully fallback
         }
       }
 
-      // 2. If not authenticated or admin sync wasn't completed, sync public bookings & comments
+      // 3. If not authenticated or admin sync wasn't completed, sync public bookings & comments
       if (!adminFetched) {
-        const publicRes = await fetch('/api/public/bookings');
-        if (publicRes.ok) {
-          const pubData = await publicRes.json();
-          if (pubData && Array.isArray(pubData.bookings)) {
-            setBookings(pubData.bookings);
-            setLocal('bookings', pubData.bookings);
+        try {
+          const publicRes = await fetch('/api/public/bookings');
+          if (publicRes.ok) {
+            const pubData = await publicRes.json();
+            if (pubData && Array.isArray(pubData.bookings)) {
+              setBookings(pubData.bookings);
+              setLocal('bookings', pubData.bookings);
+            }
           }
+        } catch {
+          // Offline or local storage mode: keep local cache without noisy warnings
         }
       }
-    } catch (err) {
-      console.warn('Booking sync notice:', err);
+    } catch {
+      // Quiet fallback without noisy warnings
     }
   };
 
@@ -831,10 +861,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('storage', handleStorage);
     window.addEventListener('av-booking-created', handleCustomBooking);
 
-    // Periodic live polling every 8 seconds for real-time responsiveness
+    // Periodic live polling every 30 seconds if document is visible
     const interval = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       refreshAdminData();
-    }, 8000);
+    }, 30000);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
