@@ -1454,6 +1454,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Studio Profile
               </button>
               <button
+                onClick={() => setSettingsSubTab('banner')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  settingsSubTab === 'banner'
+                    ? 'bg-[var(--color-gold)] text-black'
+                    : 'text-white/60 hover:text-white bg-[#141414]'
+                }`}
+              >
+                <Megaphone className="w-3.5 h-3.5" />
+                <span>Advertisement Banner</span>
+                {studioProfile.promoBannerEnabled && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                )}
+              </button>
+              <button
                 onClick={() => setSettingsSubTab('appearance')}
                 className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
                   settingsSubTab === 'appearance'
@@ -1685,7 +1699,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 4.C: Branding & Accent */}
+            {/* 4.C: Advertisement & Announcement Banner */}
+            {settingsSubTab === 'banner' && renderAdvertisementBannerEditor()}
+
+            {/* 4.D: Branding & Accent */}
             {settingsSubTab === 'appearance' && (
               <div className="max-w-2xl p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4 text-xs">
                 <h2 className="font-bold uppercase text-sm text-white pb-2 border-b border-white/10">
