@@ -5,32 +5,33 @@ interface LoadingExperienceProps {
   className?: string;
 }
 
+/**
+ * Global Studio Loader based on Uiverse.io by sahilxkhadka
+ * Styled for both dark & light modes with subtle golden brand accents
+ */
 export const LoadingExperience: React.FC<LoadingExperienceProps> = ({
-  label = 'LOADING...',
+  label = 'LOADING STUDIO SHOWCASE...',
   className = 'py-16'
 }) => {
   return (
-    <div className={`flex flex-col items-center justify-center w-full ${className}`}>
-      <div className="mb-3">
-        <span className="text-xs tracking-[0.25em] font-semibold text-[var(--color-gold)] uppercase select-none font-heading opacity-90">
+    <div className={`flex flex-col items-center justify-center w-full min-h-[300px] ${className}`} role="status">
+      {/* From Uiverse.io by sahilxkhadka */}
+      <div className="animate-pulse flex flex-col items-center gap-4 w-60">
+        <div>
+          <div className="w-48 h-6 bg-slate-400/40 dark:bg-slate-700/80 rounded-md"></div>
+          <div className="w-28 h-4 bg-slate-400/40 dark:bg-slate-700/80 mx-auto mt-3 rounded-md"></div>
+        </div>
+        <div className="h-7 bg-slate-400/35 dark:bg-slate-700/60 w-full rounded-md"></div>
+        <div className="h-7 bg-slate-400/35 dark:bg-slate-700/60 w-full rounded-md"></div>
+        <div className="h-7 bg-slate-400/35 dark:bg-slate-700/60 w-full rounded-md"></div>
+        <div className="h-7 bg-slate-400/35 dark:bg-slate-700/60 w-1/2 rounded-md self-start"></div>
+      </div>
+
+      {label && (
+        <span className="mt-6 text-[11px] tracking-[0.25em] font-semibold text-[var(--color-gold)] uppercase font-mono animate-pulse">
           {label}
         </span>
-      </div>
-      <div className="w-48 sm:w-64 h-[2px] bg-[rgba(212,175,55,0.15)] rounded-full overflow-hidden relative">
-        <div
-          className="absolute inset-y-0 left-0 bg-[var(--color-gold)] opacity-80 w-1/3 rounded-full"
-          style={{
-            animation: 'goldLoadingSweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite'
-          }}
-        />
-      </div>
-      <style>{`
-        @keyframes goldLoadingSweep {
-          0% { left: -35%; width: 30%; }
-          50% { width: 50%; }
-          100% { left: 105%; width: 30%; }
-        }
-      `}</style>
+      )}
     </div>
   );
 };

@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <path d="M 18 38 L 30 18 L 42 38 Z" stroke="#ffffff" stroke-width="2" fill="none"/>
+  <path d="M 24 38 L 30 28 L 36 38 Z" fill="#f9931f"/>
+  <text x="50" y="36" font-family="'Plus Jakarta Sans', sans-serif" font-weight="800" font-size="15" fill="#ffffff" letter-spacing="0.08em">APEX</text>
+  <text x="96" y="36" font-family="'Plus Jakarta Sans', sans-serif" font-weight="600" font-size="10" fill="#94a3b8" letter-spacing="0.15em">MOTION</text>
+</svg>

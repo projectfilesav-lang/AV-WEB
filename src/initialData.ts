@@ -10,7 +10,8 @@ import {
   FAQ,
   BlogPost,
   BlogComment,
-  SocialLink
+  SocialLink,
+  ClientLogo
 } from './types';
 
 export const DEFAULT_THEME_TOKENS: ThemeTokens = {
@@ -42,6 +43,9 @@ export const DEFAULT_THEME_TOKENS: ThemeTokens = {
 };
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  logoUrl: '/logo.svg',
+  faviconUrl: '/favicon.svg',
+  logoAlt: 'AV Productions',
   heroTitle: 'Every Frame, Directed With Intent.',
   heroTagline: 'Cinematography, visual direction, and narrative filmmaking for commercial campaigns, documentaries, and artist commissions.',
   heroMediaUrl: '',
@@ -432,3 +436,19 @@ export const INITIAL_SOCIAL_LINKS: SocialLink[] = [
   { platform: 'LinkedIn', url: 'https://linkedin.com/company/avproductions' },
   { platform: 'X', url: 'https://x.com/avproductions' }
 ];
+
+export const INITIAL_CLIENT_LOGOS: ClientLogo[] = [
+  { id: 'cl-1', name: 'Phoneplace Kenya', logoUrl: '/clients/PHONEPLACEKENYALOGO (2).webp', order: 1, featured: true },
+  { id: 'cl-2', name: 'TTNT 6 Seasons', logoUrl: '/clients/TTNT 6 SEASONS.png', order: 2, featured: true },
+  { id: 'cl-3', name: 'Zunguka Africa', logoUrl: '/clients/Zunguka.png', order: 3, featured: true },
+  { id: 'cl-4', name: 'FunCity Studios', logoUrl: '/clients/funcity logo.png', order: 4, featured: true },
+  { id: 'cl-5', name: 'Gold White Studios', logoUrl: '/clients/gold white logo.png', order: 5, featured: true },
+  { id: 'cl-6', name: 'Apex Motion Group', logoUrl: '/clients/Asset 10.png', order: 6, featured: true },
+  { id: 'cl-7', name: 'Horizon Cinema', logoUrl: '/clients/Asset 4.png', order: 7, featured: true },
+  { id: 'cl-8', name: 'Luminary Media', logoUrl: '/clients/Asset 5.png', order: 8, featured: true },
+  { id: 'cl-9', name: 'Aura Productions', logoUrl: '/clients/LOGO PNG0.png', order: 9, featured: true },
+  { id: 'cl-10', name: 'Main Logo White', logoUrl: '/clients/Main Logo White.png', order: 10, featured: true },
+  { id: 'cl-11', name: 'Red Print Creatives', logoUrl: '/clients/print on red.png', order: 11, featured: true },
+  { id: 'cl-12', name: 'E-White Visuals', logoUrl: '/clients/ewhite.png', order: 12, featured: true }
+];
+

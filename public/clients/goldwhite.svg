@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <polygon points="26,18 36,36 16,36" stroke="#f9931f" stroke-width="2" fill="none"/>
+  <polygon points="26,24 32,34 20,34" fill="#f9931f"/>
+  <text x="46" y="37" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="14" fill="#ffffff" letter-spacing="0.1em">GOLD WHITE</text>
+</svg>

@@ -1,4 +1,7 @@
 export interface SiteSettings {
+  logoUrl?: string;
+  faviconUrl?: string;
+  logoAlt?: string;
   heroTitle: string;
   heroTagline: string;
   heroMediaUrl: string;
@@ -22,6 +25,15 @@ export interface SiteSettings {
   ogImageUrl: string;
   gaMeasurementId: string;
   updatedAt?: string;
+}
+
+export interface ClientLogo {
+  id: string;
+  name: string;
+  logoUrl: string;
+  order: number;
+  featured?: boolean;
+  createdAt?: string;
 }
 
 export interface ThemeTokens {

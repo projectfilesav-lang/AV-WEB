@@ -44,8 +44,11 @@ import {
   CloudDownload,
   Zap,
   Server,
-  Megaphone
+  Megaphone,
+  Globe
 } from 'lucide-react';
+import { BrandingSettingsEditor } from './BrandingSettingsEditor';
+import { ClientLogosManager } from './ClientLogosManager';
 import {
   getStoredAdminPassword,
   updateAdminPassword,
@@ -83,6 +86,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     blogPosts,
     blogComments,
     socialLinks,
+    clientLogos,
     adminMutate,
     updateThemeTokens,
     refreshAdminData,
@@ -95,8 +99,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   // Sub-tabs
   const [portfolioSubTab, setPortfolioSubTab] = useState<'items' | 'categories' | 'services' | 'milestones'>('items');
-  const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs' | 'banner'>('articles');
-  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'banner' | 'appearance' | 'database'>('security');
+  const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs' | 'clients' | 'banner'>('articles');
+  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'branding' | 'banner' | 'appearance' | 'database'>('security');
 
   // Supabase Configuration & Migration states
   const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getStoredSupabaseConfig().url);
@@ -1245,6 +1249,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   FAQs ({faqs.length})
                 </button>
                 <button
+                  onClick={() => setContentSubTab('clients')}
+                  className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                    contentSubTab === 'clients'
+                      ? 'bg-[var(--color-gold)] text-black'
+                      : 'text-white/60 hover:text-white bg-[#141414]'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Client & Partner Logos ({clientLogos.length})</span>
+                </button>
+                <button
                   onClick={() => setContentSubTab('banner')}
                   className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
                     contentSubTab === 'banner'
@@ -1422,6 +1437,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
+            {/* Client & Partner Logos Manager */}
+            {contentSubTab === 'clients' && (
+              <ClientLogosManager
+                clientLogos={clientLogos}
+                adminMutate={adminMutate}
+                token={token}
+                showToast={showToast}
+              />
+            )}
+
             {/* Advertisement & Announcement Banner */}
             {contentSubTab === 'banner' && renderAdvertisementBannerEditor()}
           </div>
@@ -1452,6 +1477,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }`}
               >
                 Studio Profile
+              </button>
+              <button
+                onClick={() => setSettingsSubTab('branding')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  settingsSubTab === 'branding'
+                    ? 'bg-[var(--color-gold)] text-black'
+                    : 'text-white/60 hover:text-white bg-[#141414]'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Brand Logo & Favicon</span>
               </button>
               <button
                 onClick={() => setSettingsSubTab('banner')}
@@ -1697,6 +1733,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               </div>
+            )}
+
+            {/* 4.B.2: Studio Brand Logo & Favicon */}
+            {settingsSubTab === 'branding' && (
+              <BrandingSettingsEditor
+                siteSettings={studioProfile}
+                onSave={async (updated) => {
+                  setStudioProfile(updated);
+                  await adminMutate('update', 'site_settings', 'active', updated, token);
+                }}
+                showToast={showToast}
+              />
             )}
 
             {/* 4.C: Advertisement & Announcement Banner */}

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <path d="M 20 22 L 36 22 M 28 22 L 28 42 M 36 22 L 52 22 M 44 22 L 44 42" stroke="#f9931f" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="60" y="34" font-family="'Plus Jakarta Sans', sans-serif" font-weight="800" font-size="15" fill="#ffffff" letter-spacing="0.08em">TTNT</text>
+  <text x="60" y="45" font-family="'Plus Jakarta Sans', sans-serif" font-weight="600" font-size="9" fill="#94a3b8" letter-spacing="0.2em">6 SEASONS</text>
+</svg>

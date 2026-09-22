@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <circle cx="28" cy="30" r="13" stroke="#f9931f" stroke-width="2.5" stroke-dasharray="25 6"/>
+  <circle cx="28" cy="30" r="5" fill="#f9931f"/>
+  <text x="52" y="37" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="16" fill="#ffffff" letter-spacing="0.04em">ZUNGUKA</text>
+</svg>

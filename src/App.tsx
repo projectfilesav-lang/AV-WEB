@@ -46,7 +46,7 @@ const checkIsBackstageRoute = (): boolean => {
 };
 
 const AppContent: React.FC = () => {
-  const { siteSettings } = useData();
+  const { siteSettings, isLoading } = useData();
 
   // Route state
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -185,19 +185,21 @@ const AppContent: React.FC = () => {
   }
 
   // Public-facing application
+  const hasPromoBanner = Boolean(siteSettings.promoBannerEnabled && siteSettings.promoBannerText);
+
   return (
     <div className="min-h-screen bg-[var(--bg-color)] text-[var(--text-body)] flex flex-col relative transition-colors duration-300">
       {/* Scroll Progress Indicator Bar */}
       <ScrollProgress />
 
-      {/* Top Announcement Banner (Single instance on site) */}
-      {siteSettings.promoBannerEnabled && siteSettings.promoBannerText && (
+      {/* Top Announcement Banner (Pinned at top when scrolling) */}
+      {hasPromoBanner && (
         <aside
           id="site-promo-banner"
-          className="w-full bg-[#0d0d0c] border-b border-[var(--border-color)] text-[var(--color-gold)] py-2 px-4 text-center text-xs font-mono tracking-wider flex items-center justify-center gap-2 z-40 transition-colors"
+          className="fixed top-0 left-0 right-0 h-10 bg-[#0d0d0c] border-b border-[var(--border-color)] text-[var(--color-gold)] px-4 text-center text-xs font-mono tracking-wider flex items-center justify-center gap-2 z-50 transition-colors shadow-sm select-none"
           aria-label="Studio Announcement"
         >
-          <span>{siteSettings.promoBannerText}</span>
+          <span className="truncate max-w-4xl">{siteSettings.promoBannerText}</span>
         </aside>
       )}
 
@@ -206,11 +208,11 @@ const AppContent: React.FC = () => {
         activeSection={activeSection}
         onNavigate={(sec) => navigateToPublic(sec)}
         onOpenSearch={() => setIsSearchOpen(true)}
-        hasPromoBanner={Boolean(siteSettings.promoBannerEnabled && siteSettings.promoBannerText)}
+        hasPromoBanner={hasPromoBanner}
       />
 
-      {/* Main Public Body Container with top padding for sticky header */}
-      <main className="flex-1 pt-14 sm:pt-16">
+      {/* Main Public Body Container with top padding for sticky header and pinned banner */}
+      <main className={`flex-1 ${hasPromoBanner ? 'pt-24 sm:pt-28' : 'pt-14 sm:pt-16'}`}>
         {activeSection === 'home' && (
           <HomePage
             onNavigate={navigateToPublic}

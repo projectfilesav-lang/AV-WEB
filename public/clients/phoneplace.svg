@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <circle cx="28" cy="30" r="14" stroke="#f9931f" stroke-width="2" fill="none"/>
+  <rect x="23" y="22" width="10" height="16" rx="2" stroke="#ffffff" stroke-width="1.5" fill="none"/>
+  <text x="52" y="35" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="14" fill="#ffffff" letter-spacing="0.05em">PHONEPLACE</text>
+  <text x="52" y="46" font-family="'Plus Jakarta Sans', sans-serif" font-weight="500" font-size="9" fill="#f9931f" letter-spacing="0.2em">KENYA</text>
+</svg>

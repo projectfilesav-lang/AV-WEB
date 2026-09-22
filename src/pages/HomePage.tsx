@@ -5,6 +5,7 @@ import { PortfolioItem } from '../types';
 import { PortfolioLightbox } from '../components/PortfolioLightbox';
 import { HomeQuickFinder } from '../components/HomeQuickFinder';
 import { LazyImage } from '../components/LazyImage';
+import { ClientLogoTicker } from '../components/ClientLogoTicker';
 
 interface HomePageProps {
   onNavigate: (section: string, filterCategory?: string, preselectedServiceId?: string) => void;
@@ -321,6 +322,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onOpenLightbox, 
           })}
         </div>
       </section>
+
+      {/* 5.5 CLIENT & BRAND LOGO MARQUEE */}
+      <ClientLogoTicker />
 
       {/* 6. CLIENT ENDORSEMENTS - Striking Editorial Pull-Quote */}
       {liveReviews.length > 0 && (

@@ -27,9 +27,18 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10">
           {/* Brand Col */}
           <div className="md:col-span-5">
-            <span className="font-bold tracking-tight text-xl text-[var(--text-heading)] block mb-3">
-              AV Productions
-            </span>
+            <div className="flex items-center gap-3 mb-4">
+              {siteSettings.logoUrl && (
+                <img
+                  src={siteSettings.logoUrl}
+                  alt={siteSettings.logoAlt || 'AV Productions'}
+                  className="h-9 w-auto object-contain"
+                />
+              )}
+              <span className="font-bold tracking-tight text-xl text-[var(--text-heading)] block">
+                AV Productions
+              </span>
+            </div>
             <p className="text-sm text-[var(--text-body)]/80 font-normal max-w-sm leading-relaxed mb-6">
               Commercial campaigns, original documentaries, and narrative filmmaking. Crafted with precision and directed with intent.
             </p>

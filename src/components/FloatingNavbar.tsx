@@ -65,7 +65,8 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
     setMobileMenuOpen(false);
   };
 
-  const topOffset = hasPromoBanner && !isScrolled ? 'top-10 sm:top-10' : 'top-0';
+  // Sticky pinning: When promotional banner is active, navbar consistently sits right below the pinned banner
+  const topOffset = hasPromoBanner ? 'top-10' : 'top-0';
 
   return (
     <>
@@ -83,12 +84,20 @@ export const FloatingNavbar: React.FC<FloatingNavbarProps> = ({
           <button
             id="nav-brand-logo"
             onClick={() => handleSelect('home')}
-            className="flex items-center gap-1.5 sm:gap-2.5 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1 shrink min-w-0"
+            className="flex items-center gap-2 sm:gap-3 group cursor-pointer text-left focus:outline-none focus:ring-1 focus:ring-[var(--color-gold)] rounded py-1 shrink min-w-0"
             aria-label="AV Productions Home"
           >
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/30 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform shrink-0">
-              <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-            </div>
+            {siteSettings.logoUrl ? (
+              <img
+                src={siteSettings.logoUrl}
+                alt={siteSettings.logoAlt || 'AV Productions'}
+                className="h-7 sm:h-9 w-auto object-contain max-w-[130px] group-hover:scale-105 transition-transform shrink-0"
+              />
+            ) : (
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/30 flex items-center justify-center text-[var(--color-gold)] group-hover:scale-105 transition-transform shrink-0">
+                <Film className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              </div>
+            )}
             <div className="min-w-0">
               <span className="font-heading font-bold tracking-tight sm:tracking-wider text-xs sm:text-base text-[var(--text-heading)] group-hover:text-[var(--color-gold)] transition-colors block leading-none truncate">
                 AV PRODUCTIONS

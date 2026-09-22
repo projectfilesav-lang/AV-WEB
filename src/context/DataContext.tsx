@@ -11,7 +11,8 @@ import {
   FAQ,
   BlogPost,
   BlogComment,
-  SocialLink
+  SocialLink,
+  ClientLogo
 } from '../types';
 import {
   DEFAULT_SITE_SETTINGS,
@@ -24,7 +25,8 @@ import {
   INITIAL_FAQS,
   INITIAL_BLOG_POSTS,
   INITIAL_BLOG_COMMENTS,
-  INITIAL_SOCIAL_LINKS
+  INITIAL_SOCIAL_LINKS,
+  INITIAL_CLIENT_LOGOS
 } from '../initialData';
 import {
   getSupabaseClient,
@@ -49,6 +51,7 @@ interface DataContextType {
   blogPosts: BlogPost[];
   blogComments: BlogComment[];
   socialLinks: SocialLink[];
+  clientLogos: ClientLogo[];
   theme: 'dark' | 'light';
   toggleTheme: () => void;
   isLoading: boolean;
@@ -166,8 +169,35 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => getLocal('blog_posts', INITIAL_BLOG_POSTS));
   const [blogComments, setBlogComments] = useState<BlogComment[]>(() => getLocal('blog_comments', INITIAL_BLOG_COMMENTS));
   const [socialLinks, setSocialLinks] = useState<SocialLink[]>(() => getLocal('social_links', INITIAL_SOCIAL_LINKS));
+  const [clientLogos, setClientLogos] = useState<ClientLogo[]>(() => getLocal('client_logos', INITIAL_CLIENT_LOGOS));
   const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('av_theme') as 'dark' | 'light') || 'dark');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+
+  // Dynamic Favicon synchronization: updates browser tab icon whenever logo/favicon changes
+  useEffect(() => {
+    const faviconUrl = siteSettings.faviconUrl || siteSettings.logoUrl || '/favicon.svg';
+    const linkTypes = [
+      { rel: 'icon', id: 'app-favicon', type: faviconUrl.endsWith('.svg') ? 'image/svg+xml' : 'image/png' },
+      { rel: 'apple-touch-icon', id: 'app-apple-icon', type: '' }
+    ];
+    linkTypes.forEach(({ rel, id, type }) => {
+      let link = document.getElementById(id) as HTMLLinkElement | null;
+      if (!link) {
+        link = document.querySelector(`link[rel='${rel}']`) as HTMLLinkElement | null;
+      }
+      if (link) {
+        link.href = faviconUrl;
+        if (type) link.type = type;
+      } else {
+        const newLink = document.createElement('link');
+        newLink.id = id;
+        newLink.rel = rel;
+        newLink.href = faviconUrl;
+        if (type) newLink.type = type;
+        document.head.appendChild(newLink);
+      }
+    });
+  }, [siteSettings.faviconUrl, siteSettings.logoUrl]);
 
   // Apply CSS Variables dynamically based on theme and tokens
   const applyThemeTokens = useCallback((tokens: ThemeTokens, currentTheme: 'dark' | 'light') => {
@@ -522,6 +552,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } else if (collection === 'social_links') {
       setSocialLinks(data);
       setLocal('social_links', data);
+    } else if (collection === 'client_logos') {
+      setClientLogos(prev => {
+        let next: ClientLogo[];
+        if (action === 'create') {
+          next = [...prev, { id: id || 'cl-' + Date.now(), ...data }];
+        } else if (action === 'update') {
+          next = prev.map(c => c.id === id ? { ...c, ...data } : c);
+        } else {
+          next = prev.filter(c => c.id !== id);
+        }
+        setLocal('client_logos', next);
+        return next;
+      });
     }
 
     // 2. Direct Supabase sync if client is active
@@ -538,7 +581,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bookings: 'bookings',
         faqs: 'faqs',
         blog_posts: 'blog_posts',
-        blog_comments: 'blog_comments'
+        blog_comments: 'blog_comments',
+        client_logos: 'client_logos'
       };
       const supabaseTable = tableMap[collection];
       if (supabaseTable) {
@@ -893,6 +937,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         blogPosts,
         blogComments,
         socialLinks,
+        clientLogos,
         theme,
         toggleTheme,
         isLoading,

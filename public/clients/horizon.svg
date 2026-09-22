@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" fill="none">
+  <rect width="200" height="60" rx="8" fill="transparent"/>
+  <circle cx="28" cy="30" r="12" stroke="#ffffff" stroke-width="1.5"/>
+  <line x1="16" y1="30" x2="40" y2="30" stroke="#f9931f" stroke-width="2"/>
+  <text x="48" y="36" font-family="'Plus Jakarta Sans', sans-serif" font-weight="700" font-size="14" fill="#ffffff" letter-spacing="0.1em">HORIZON</text>
+</svg>

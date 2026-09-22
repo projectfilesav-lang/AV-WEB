@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 700" width="100%" height="100%" fill="none">
+  <!-- AV Productions Master Brand Logo (Based on AV LOGO Illustrator) -->
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,600;0,700&amp;display=swap');
+      .av-brand {
+        fill: #F58A07;
+      }
+      .av-subtext {
+        font-family: 'Playfair Display', Georgia, serif;
+        font-size: 42px;
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        fill: #F58A07;
+      }
+    </style>
+  </defs>
+
+  <g class="av-brand">
+    <!-- Letter A: Left leg with bilateral base serif -->
+    <!-- Base serif A left: (8, 620) to (160, 620) -->
+    <path d="M 8 620 L 160 620 L 160 605 C 130 605 118 595 130 555 L 265 140 C 275 110 262 100 238 95 L 290 95 L 478 555 C 492 590 510 605 540 605 L 540 620 L 340 620 L 340 605 C 370 605 382 590 370 555 L 342 475 L 175 475 L 135 555 C 122 595 105 605 60 605 L 8 605 Z M 192 430 L 325 430 L 260 260 Z" />
+
+    <!-- Letter V: Left heavy stem & Right ascending stem with top serif -->
+    <!-- Top-left serif of V: (250, 95) to (455, 95) -->
+    <path d="M 250 95 L 455 95 L 455 112 C 410 112 390 128 368 180 L 515 545 L 540 605 L 520 605 L 305 180 C 290 145 275 112 250 112 Z" />
+
+    <!-- Right stem of V ascending to top right with prominent top serif -->
+    <!-- Top right serif: (630, 95) to (790, 95) -->
+    <path d="M 520 605 L 535 605 C 550 575 640 330 748 112 C 768 112 778 112 788 112 L 788 95 L 632 95 L 632 112 C 660 112 675 125 662 155 L 528 590 Z" />
+  </g>
+
+  <!-- "productions" lowercase serif text positioned cleanly inside the A crossbar -->
+  <text x="180" y="420" class="av-subtext">productions</text>
+</svg>
