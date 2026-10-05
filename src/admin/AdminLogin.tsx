@@ -7,7 +7,7 @@ interface AdminLoginProps {
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
-  const { isConfigured, url, rawUrl } = getSupabaseEnvConfig();
+  const { url } = getSupabaseEnvConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -61,27 +61,10 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             </div>
             {url && (
               <span className="text-[10px] text-white/50 pl-6 truncate">
-                Endpoint: {url}
+                Connected: {url}
               </span>
             )}
           </div>
-
-          {!isConfigured && (
-            <div className="mb-6 p-3.5 bg-amber-950/50 border border-amber-500/50 rounded-sm text-xs text-amber-200 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
-              <div>
-                <p className="font-bold uppercase tracking-wider text-[11px] mb-1">Supabase Environment Variables Missing or Invalid</p>
-                <p className="text-amber-200/80 leading-relaxed">
-                  Please set <code className="font-mono text-white">VITE_SUPABASE_URL</code> (e.g. <code className="font-mono text-white">https://your-project-id.supabase.co</code>) and <code className="font-mono text-white">VITE_SUPABASE_ANON_KEY</code> in Netlify Environment Variables, then trigger a new deploy in Netlify.
-                </p>
-                {rawUrl && !url && (
-                  <p className="text-red-300 mt-1.5 font-mono text-[11px]">
-                    Current VITE_SUPABASE_URL ("{rawUrl}") is not a valid .supabase.co project URL.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
 
           {errorMsg && (
             <div className="mb-6 p-3 bg-red-950/50 border border-red-500/50 rounded-sm text-xs text-red-300 flex items-start gap-2">
@@ -140,7 +123,7 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
             <button
               id="admin-login-submit-btn"
               type="submit"
-              disabled={isLoading || !isConfigured}
+              disabled={isLoading}
               className="w-full py-3.5 bg-[var(--color-gold)] text-black font-heading font-extrabold text-xs tracking-widest uppercase rounded-sm border border-[var(--color-gold)] hover:bg-transparent hover:text-[var(--color-gold)] transition-all cursor-pointer shadow-[0_0_15px_rgba(212,175,55,0.3)] disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {isLoading ? (
