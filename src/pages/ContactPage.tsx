@@ -34,7 +34,7 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate = () => {},
       }).toString();
 
       // 1. Submit to Netlify Forms via static form POST
-      const netlifyPromise = fetch('/', {
+      const netlifyPromise = fetch('/__forms.html', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: formBody,
@@ -49,7 +49,12 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate = () => {},
         createdAt: new Date().toISOString(),
       });
 
-      await Promise.allSettled([netlifyPromise, supabasePromise]);
+      const [netlifyResult, supabaseResult] = await Promise.allSettled([netlifyPromise, supabasePromise]);
+      const netlifyOk = netlifyResult.status === 'fulfilled' && netlifyResult.value.ok;
+      const supabaseOk = supabaseResult.status === 'fulfilled' && supabaseResult.value.success;
+      if (!netlifyOk && !supabaseOk) {
+        throw new Error('Submission failed');
+      }
       setIsSubmitted(true);
       setFormData({ name: '', email: '', message: '' });
     } catch {
