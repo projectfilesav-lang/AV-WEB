@@ -7,7 +7,7 @@ interface AdminLoginProps {
 }
 
 export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
-  const { isConfigured } = getSupabaseEnvConfig();
+  const { isConfigured, url, rawUrl } = getSupabaseEnvConfig();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -54,19 +54,31 @@ export const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
 
         {/* Login Box */}
         <div className="p-6 sm:p-8 rounded-sm border border-[var(--color-gold)]/40 bg-[#111111] shadow-2xl">
-          <div className="flex items-center gap-2 p-2.5 rounded bg-black/60 border border-[var(--color-gold)]/20 mb-6 text-[11px] font-mono text-[var(--color-gold)]">
-            <ShieldCheck className="w-4 h-4 shrink-0" />
-            <span>Protected by Supabase Authentication &amp; Row Level Security</span>
+          <div className="flex flex-col gap-1 p-2.5 rounded bg-black/60 border border-[var(--color-gold)]/20 mb-6 text-[11px] font-mono text-[var(--color-gold)]">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>Protected by Supabase Authentication &amp; Row Level Security</span>
+            </div>
+            {url && (
+              <span className="text-[10px] text-white/50 pl-6 truncate">
+                Endpoint: {url}
+              </span>
+            )}
           </div>
 
           {!isConfigured && (
             <div className="mb-6 p-3.5 bg-amber-950/50 border border-amber-500/50 rounded-sm text-xs text-amber-200 flex items-start gap-2.5">
               <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-400" />
               <div>
-                <p className="font-bold uppercase tracking-wider text-[11px] mb-1">Supabase Environment Variables Missing</p>
+                <p className="font-bold uppercase tracking-wider text-[11px] mb-1">Supabase Environment Variables Missing or Invalid</p>
                 <p className="text-amber-200/80 leading-relaxed">
-                  Please set <code className="font-mono text-white">VITE_SUPABASE_URL</code> and <code className="font-mono text-white">VITE_SUPABASE_ANON_KEY</code> in your environment variables to enable Admin login.
+                  Please set <code className="font-mono text-white">VITE_SUPABASE_URL</code> (e.g. <code className="font-mono text-white">https://your-project-id.supabase.co</code>) and <code className="font-mono text-white">VITE_SUPABASE_ANON_KEY</code> in Netlify Environment Variables, then trigger a new deploy in Netlify.
                 </p>
+                {rawUrl && !url && (
+                  <p className="text-red-300 mt-1.5 font-mono text-[11px]">
+                    Current VITE_SUPABASE_URL ("{rawUrl}") is not a valid .supabase.co project URL.
+                  </p>
+                )}
               </div>
             </div>
           )}

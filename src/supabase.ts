@@ -4,17 +4,32 @@ export const STORAGE_BUCKET = 'studio-media';
 
 export function normalizeSupabaseUrl(input: string | undefined | null): string {
   if (!input || typeof input !== 'string') return '';
-  let trimmed = input.trim();
+  let trimmed = input.trim().replace(/^['"]+|['"]+$/g, '').trim();
   if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
 
+  // Automatically extract project ref if user pasted a Supabase Dashboard link:
+  // e.g. https://supabase.com/dashboard/project/abcdefghijklmnop/...
+  const dashboardMatch = trimmed.match(/supabase\.com\/dashboard\/project\/([a-z0-9-]+)/i) ||
+                         trimmed.match(/app\.supabase\.com\/project\/([a-z0-9-]+)/i);
+  if (dashboardMatch && dashboardMatch[1]) {
+    return `https://${dashboardMatch[1].toLowerCase()}.supabase.co`;
+  }
+
+  // If user pasted just the 20-char project reference ID (e.g. "abcdefghijklmnop")
   if (!trimmed.includes('.') && !trimmed.includes('/')) {
-    trimmed = `https://${trimmed}.supabase.co`;
-  } else if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+    return `https://${trimmed.toLowerCase()}.supabase.co`;
+  }
+
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
     trimmed = `https://${trimmed}`;
   }
 
   try {
     const parsed = new URL(trimmed);
+    if (parsed.hostname === 'supabase.com' || parsed.hostname === 'www.supabase.com' || parsed.hostname === 'app.supabase.com') {
+      // Invalid API host (user pasted https://supabase.com without project ID)
+      return '';
+    }
     if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
       return parsed.origin;
     }
@@ -28,14 +43,14 @@ export function normalizeSupabaseUrl(input: string | undefined | null): string {
  * Reads Supabase configuration strictly from environment variables:
  * VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
  */
-export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean } {
+export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean; rawUrl?: string } {
   try {
     const envObj = (import.meta as unknown as { env?: Record<string, string> }).env || {};
-    const rawUrl = envObj.VITE_SUPABASE_URL || '';
-    const rawKey = envObj.VITE_SUPABASE_ANON_KEY || '';
+    const rawUrl = (envObj.VITE_SUPABASE_URL || '').trim();
+    const rawKey = (envObj.VITE_SUPABASE_ANON_KEY || '').trim();
 
     const url = normalizeSupabaseUrl(rawUrl);
-    let anonKey = rawKey ? rawKey.trim() : '';
+    let anonKey = rawKey.replace(/^['"]+|['"]+$/g, '').trim();
     if (anonKey === 'undefined' || anonKey === 'null') {
       anonKey = '';
     }
@@ -43,10 +58,11 @@ export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfig
     return {
       url,
       anonKey,
+      rawUrl,
       isConfigured: Boolean(url && anonKey && anonKey.length >= 10)
     };
   } catch {
-    return { url: '', anonKey: '', isConfigured: false };
+    return { url: '', anonKey: '', rawUrl: '', isConfigured: false };
   }
 }
 
@@ -111,9 +127,17 @@ export async function signInWithPassword(email: string, password: string): Promi
     });
 
     if (error || !data.user || !data.session) {
+      const msg = error?.message || '';
+      if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')) {
+        const { url } = getSupabaseEnvConfig();
+        return {
+          success: false,
+          error: `Could not connect to Supabase at "${url}". Please check that: (1) VITE_SUPABASE_URL in Netlify is set to your https://<project-id>.supabase.co URL, (2) you clicked "Trigger deploy -> Deploy site" in Netlify after adding your environment variables, and (3) your Supabase project is active (not paused).`
+        };
+      }
       return {
         success: false,
-        error: error?.message || 'Invalid login credentials. Please check your email and password in Supabase Authentication.'
+        error: msg || 'Invalid login credentials. Please check your email and password in Supabase Authentication.'
       };
     }
 
@@ -126,9 +150,17 @@ export async function signInWithPassword(email: string, password: string): Promi
       token: data.session.access_token
     };
   } catch (err: any) {
+    const msg = err?.message || '';
+    if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')) {
+      const { url } = getSupabaseEnvConfig();
+      return {
+        success: false,
+        error: `Could not connect to Supabase at "${url}". Please check that VITE_SUPABASE_URL in Netlify is set to https://<project-id>.supabase.co and that you triggered a new deploy in Netlify after saving your environment variables.`
+      };
+    }
     return {
       success: false,
-      error: err?.message || 'Unable to reach Supabase Authentication.'
+      error: msg || 'Unable to reach Supabase Authentication.'
     };
   }
 }
