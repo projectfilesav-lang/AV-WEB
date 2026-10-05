@@ -33,6 +33,7 @@ import {
   fetchFromSupabase,
   fetchSingletonFromSupabase,
   upsertToSupabase,
+  insertPublicRecord,
   deleteFromSupabase,
   pushAllDataToSupabase,
   toCamelCase
@@ -74,8 +75,8 @@ interface DataContextType {
     data?: any,
     token?: string
   ) => Promise<{ success: boolean; error?: string }>;
-  syncToGoldGroup: (group: 'core' | 'interactive' | 'structure' | 'typography' | 'all') => void;
-  updateThemeTokens: (newTokens: Partial<ThemeTokens>) => void;
+  syncToGoldGroup: (group: 'core' | 'interactive' | 'structure' | 'typography' | 'all') => Promise<{ success: boolean; error?: string }>;
+  updateThemeTokens: (newTokens: Partial<ThemeTokens>) => Promise<{ success: boolean; error?: string }>;
   refreshAdminData: (token?: string) => Promise<void>;
   syncAllToSupabase: () => Promise<{ success: boolean; message: string; counts: Record<string, number>; errors: string[] }>;
   syncFromSupabase: () => Promise<{ success: boolean; message: string }>;
@@ -83,94 +84,22 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
-const STORAGE_PREFIX = 'av_prod_';
-
-function getLocal<T>(key: string, fallback: T): T {
-  try {
-    const saved = localStorage.getItem(STORAGE_PREFIX + key);
-    return saved ? JSON.parse(saved) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function setLocal<T>(key: string, val: T) {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(val));
-  } catch (e) {
-    console.error('Storage error:', e);
-  }
-}
-
 export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [siteSettings, setSiteSettings] = useState<SiteSettings>(() => {
-    const loaded = getLocal('settings', DEFAULT_SITE_SETTINGS);
-    // Gracefully upgrade legacy title / labels from previous builds
-    if (loaded.heroTitle === 'AV PRODUCTIONS') {
-      loaded.heroTitle = DEFAULT_SITE_SETTINGS.heroTitle;
-    }
-    if (loaded.floatingBookButtonLabel === 'BOOK SESSION' || !loaded.floatingBookButtonLabel) {
-      loaded.floatingBookButtonLabel = 'Book Production';
-    }
-    if (loaded.heroMediaType === 'image' && loaded.heroMediaUrl?.includes('unsplash.com/photo-1492691527719')) {
-      loaded.heroMediaType = 'none';
-      loaded.heroMediaUrl = '';
-    }
-    if (loaded.heroTagline?.includes('sound design')) {
-      loaded.heroTagline = DEFAULT_SITE_SETTINGS.heroTagline;
-    }
-    if (loaded.introStripText?.includes('sound design')) {
-      loaded.introStripText = DEFAULT_SITE_SETTINGS.introStripText;
-    }
-    return loaded;
-  });
-  const [themeTokens, setThemeTokens] = useState<ThemeTokens>(() => {
-    const loaded = getLocal('theme_tokens', DEFAULT_THEME_TOKENS);
-    if (loaded.goldAccent === '#D4AF37' || loaded.headingFont === 'Syne' || loaded.darkBg === '#080808') {
-      return DEFAULT_THEME_TOKENS;
-    }
-    return loaded;
-  });
-  const [milestones, setMilestones] = useState<Milestone[]>(() => getLocal('milestones', INITIAL_MILESTONES));
-  const [services, setServices] = useState<Service[]>(() => {
-    const loaded = getLocal('services', INITIAL_SERVICES);
-    return loaded.map(s => {
-      if (s.id === 'srv-2' && (s.title.includes('Sound Design') || s.categoryId === 'cat-sound')) {
-        return INITIAL_SERVICES.find(is => is.id === 'srv-2') || s;
-      }
-      return s;
-    });
-  });
-  const [categories, setCategories] = useState<PortfolioCategory[]>(() => {
-    const loaded = getLocal('categories', INITIAL_CATEGORIES);
-    return loaded.map(c => (c.id === 'cat-sound' ? { ...c, name: 'Audio Mixing & Mastering', slug: 'audio-mastering' } : c));
-  });
-  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>(() => {
-    const loaded = getLocal('portfolio_items', INITIAL_PORTFOLIO_ITEMS);
-    return loaded.map(item => {
-      if (item.id === 'item-8' || item.mediaType === 'audio') {
-        const hasBrokenUrl = !item.mediaUrl || item.mediaUrl.includes('actions.google.com') || item.mediaUrl.endsWith('.ogg');
-        return {
-          ...item,
-          mediaUrl: hasBrokenUrl ? '/audio/master-reference.mp3' : item.mediaUrl,
-          title: item.title.includes('Subterranean') ? 'Audio Mixing & Mastering — Reference Proof' : item.title,
-          description: item.description.includes('binaural')
-            ? 'Studio acoustic master demonstrating stereo imaging, dynamic headroom control, harmonic balance, and final limiter threshold proof.'
-            : item.description,
-          featured: false, // Maintain solely in the portfolio section for audio mixing & mastering proof
-        };
-      }
-      return item;
-    });
-  });
-  const [reviews, setReviews] = useState<Review[]>(() => getLocal('reviews', INITIAL_REVIEWS));
-  const [bookings, setBookings] = useState<Booking[]>(() => getLocal('bookings', []));
-  const [faqs, setFaqs] = useState<FAQ[]>(() => getLocal('faqs', INITIAL_FAQS));
-  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => getLocal('blog_posts', INITIAL_BLOG_POSTS));
-  const [blogComments, setBlogComments] = useState<BlogComment[]>(() => getLocal('blog_comments', INITIAL_BLOG_COMMENTS));
-  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(() => getLocal('social_links', INITIAL_SOCIAL_LINKS));
-  const [clientLogos, setClientLogos] = useState<ClientLogo[]>(() => getLocal('client_logos', INITIAL_CLIENT_LOGOS));
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => (localStorage.getItem('av_theme') as 'dark' | 'light') || 'dark');
+  // Built-in initial data is used strictly as an in-memory fallback until Supabase loads or if unreachable
+  const [siteSettings, setSiteSettings] = useState<SiteSettings>(DEFAULT_SITE_SETTINGS);
+  const [themeTokens, setThemeTokens] = useState<ThemeTokens>(DEFAULT_THEME_TOKENS);
+  const [milestones, setMilestones] = useState<Milestone[]>(INITIAL_MILESTONES);
+  const [services, setServices] = useState<Service[]>(INITIAL_SERVICES);
+  const [categories, setCategories] = useState<PortfolioCategory[]>(INITIAL_CATEGORIES);
+  const [portfolioItems, setPortfolioItems] = useState<PortfolioItem[]>(INITIAL_PORTFOLIO_ITEMS);
+  const [reviews, setReviews] = useState<Review[]>(INITIAL_REVIEWS);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [faqs, setFaqs] = useState<FAQ[]>(INITIAL_FAQS);
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(INITIAL_BLOG_POSTS);
+  const [blogComments, setBlogComments] = useState<BlogComment[]>(INITIAL_BLOG_COMMENTS);
+  const [socialLinks, setSocialLinks] = useState<SocialLink[]>(INITIAL_SOCIAL_LINKS);
+  const [clientLogos, setClientLogos] = useState<ClientLogo[]>(INITIAL_CLIENT_LOGOS);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   // Dynamic Favicon synchronization: updates browser tab icon whenever logo/favicon changes
@@ -204,10 +133,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const root = document.documentElement;
     root.setAttribute('data-theme', currentTheme);
 
-    // Primary gold accent (applied site-wide)
     root.style.setProperty('--color-gold', tokens.goldAccent);
-
-    // Typography
     root.style.setProperty('--font-heading', `'${tokens.headingFont}', sans-serif`);
     root.style.setProperty('--font-body', `'${tokens.bodyFont}', sans-serif`);
 
@@ -243,76 +169,75 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [themeTokens, theme, applyThemeTokens]);
 
   const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark';
-    setTheme(next);
-    localStorage.setItem('av_theme', next);
+    setTheme(prev => (prev === 'dark' ? 'light' : 'dark'));
   };
 
-  // Instant initial load for maximum speed
-  useEffect(() => {
-    setIsLoading(false);
-  }, []);
-
-  // Update design tokens
-  const updateThemeTokens = (newTokens: Partial<ThemeTokens>) => {
-    setThemeTokens(prev => {
-      const updated = { ...prev, ...newTokens };
-      setLocal('theme_tokens', updated);
-      return updated;
+  // Update design tokens and save directly to Supabase
+  const updateThemeTokens = async (newTokens: Partial<ThemeTokens>): Promise<{ success: boolean; error?: string }> => {
+    const updated: ThemeTokens = { ...themeTokens, ...newTokens };
+    setThemeTokens(updated);
+    return await upsertToSupabase('theme_tokens', {
+      id: 'default',
+      ...updated,
+      updatedAt: new Date().toISOString()
     });
   };
 
-  // Sync to Gold reset controls
-  const syncToGoldGroup = (group: 'core' | 'interactive' | 'structure' | 'typography' | 'all') => {
-    setThemeTokens(prev => {
-      let updated = { ...prev };
-      const gold = DEFAULT_THEME_TOKENS.goldAccent;
+  // Sync to Gold reset controls and save directly to Supabase
+  const syncToGoldGroup = async (
+    group: 'core' | 'interactive' | 'structure' | 'typography' | 'all'
+  ): Promise<{ success: boolean; error?: string }> => {
+    const updated = { ...themeTokens };
+    const gold = DEFAULT_THEME_TOKENS.goldAccent;
 
-      if (group === 'core' || group === 'all') {
-        updated.goldAccent = gold;
-        updated.darkBg = DEFAULT_THEME_TOKENS.darkBg;
-        updated.darkBody = DEFAULT_THEME_TOKENS.darkBody;
-        updated.darkHeading = DEFAULT_THEME_TOKENS.darkHeading;
-        updated.lightBg = DEFAULT_THEME_TOKENS.lightBg;
-        updated.lightBody = DEFAULT_THEME_TOKENS.lightBody;
-        updated.lightHeading = DEFAULT_THEME_TOKENS.lightHeading;
-      }
+    if (group === 'core' || group === 'all') {
+      updated.goldAccent = gold;
+      updated.darkBg = DEFAULT_THEME_TOKENS.darkBg;
+      updated.darkBody = DEFAULT_THEME_TOKENS.darkBody;
+      updated.darkHeading = DEFAULT_THEME_TOKENS.darkHeading;
+      updated.lightBg = DEFAULT_THEME_TOKENS.lightBg;
+      updated.lightBody = DEFAULT_THEME_TOKENS.lightBody;
+      updated.lightHeading = DEFAULT_THEME_TOKENS.lightHeading;
+    }
 
-      if (group === 'interactive' || group === 'all') {
-        updated.darkBtnBg = gold;
-        updated.darkBtnText = DEFAULT_THEME_TOKENS.darkBtnText;
-        updated.darkBtnHover = DEFAULT_THEME_TOKENS.darkBtnHover;
-        updated.darkLink = gold;
-        updated.darkLinkHover = DEFAULT_THEME_TOKENS.darkLinkHover;
+    if (group === 'interactive' || group === 'all') {
+      updated.darkBtnBg = gold;
+      updated.darkBtnText = DEFAULT_THEME_TOKENS.darkBtnText;
+      updated.darkBtnHover = DEFAULT_THEME_TOKENS.darkBtnHover;
+      updated.darkLink = gold;
+      updated.darkLinkHover = DEFAULT_THEME_TOKENS.darkLinkHover;
 
-        updated.lightBtnBg = gold;
-        updated.lightBtnText = DEFAULT_THEME_TOKENS.lightBtnText;
-        updated.lightBtnHover = DEFAULT_THEME_TOKENS.lightBtnHover;
-        updated.lightLink = DEFAULT_THEME_TOKENS.lightLink;
-        updated.lightLinkHover = DEFAULT_THEME_TOKENS.lightLinkHover;
-      }
+      updated.lightBtnBg = gold;
+      updated.lightBtnText = DEFAULT_THEME_TOKENS.lightBtnText;
+      updated.lightBtnHover = DEFAULT_THEME_TOKENS.lightBtnHover;
+      updated.lightLink = DEFAULT_THEME_TOKENS.lightLink;
+      updated.lightLinkHover = DEFAULT_THEME_TOKENS.lightLinkHover;
+    }
 
-      if (group === 'structure' || group === 'all') {
-        updated.darkBorder = DEFAULT_THEME_TOKENS.darkBorder;
-        updated.darkCardBg = DEFAULT_THEME_TOKENS.darkCardBg;
-        updated.darkIcon = gold;
+    if (group === 'structure' || group === 'all') {
+      updated.darkBorder = DEFAULT_THEME_TOKENS.darkBorder;
+      updated.darkCardBg = DEFAULT_THEME_TOKENS.darkCardBg;
+      updated.darkIcon = gold;
 
-        updated.lightBorder = DEFAULT_THEME_TOKENS.lightBorder;
-        updated.lightCardBg = DEFAULT_THEME_TOKENS.lightCardBg;
-        updated.lightIcon = DEFAULT_THEME_TOKENS.lightIcon;
-      }
+      updated.lightBorder = DEFAULT_THEME_TOKENS.lightBorder;
+      updated.lightCardBg = DEFAULT_THEME_TOKENS.lightCardBg;
+      updated.lightIcon = DEFAULT_THEME_TOKENS.lightIcon;
+    }
 
-      if (group === 'typography' || group === 'all') {
-        updated.headingFont = DEFAULT_THEME_TOKENS.headingFont;
-        updated.bodyFont = DEFAULT_THEME_TOKENS.bodyFont;
-      }
+    if (group === 'typography' || group === 'all') {
+      updated.headingFont = DEFAULT_THEME_TOKENS.headingFont;
+      updated.bodyFont = DEFAULT_THEME_TOKENS.bodyFont;
+    }
 
-      setLocal('theme_tokens', updated);
-      return updated;
+    setThemeTokens(updated);
+    return await upsertToSupabase('theme_tokens', {
+      id: 'default',
+      ...updated,
+      updatedAt: new Date().toISOString()
     });
   };
 
-  // Submit Booking (public) - Instant 0ms optimistic execution with background sync
+  // Public Booking Submission -> Saves directly to Supabase (public insert only)
   const submitBooking = async (data: {
     clientName: string;
     email: string;
@@ -340,43 +265,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString()
     };
 
-    // 1. Instant local persistence & state update (0ms latency, zero drop)
-    setBookings(prev => {
-      const next = [newBooking, ...prev];
-      setLocal('bookings', next);
-      return next;
-    });
-
-    try {
-      window.dispatchEvent(new CustomEvent('av-booking-created', { detail: newBooking }));
-    } catch {
-      // Ignore in non-browser envs
+    const res = await insertPublicRecord('bookings', newBooking);
+    if (!res.success) {
+      return { success: false, error: res.error || 'Could not submit reservation to Supabase.' };
     }
 
-    // 2. Direct Supabase sync if client is configured
-    try {
-      upsertToSupabase('bookings', newBooking).catch(err => {
-        console.warn('Supabase booking sync notice:', err);
-      });
-    } catch {}
-
-    // 3. Background server sync
-    try {
-      fetch('/api/public/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      }).catch(err => {
-        console.warn('Background booking sync completed with warning:', err);
-      });
-    } catch {
-      // Local copy is already safe
-    }
-
-    return { success: true, booking: newBooking };
+    setBookings(prev => [newBooking, ...prev]);
+    return { success: true };
   };
 
-  // Submit Blog Comment (public)
+  // Public Blog Comment Submission -> Saves directly to Supabase
   const submitComment = async (postId: string, authorName: string, authorEmail: string, content: string) => {
     const newComment: BlogComment = {
       id: 'comm-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
@@ -388,342 +286,273 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       createdAt: new Date().toISOString()
     };
 
-    setBlogComments(prev => {
-      const next = [newComment, ...prev];
-      setLocal('blog_comments', next);
-      return next;
-    });
+    const res = await insertPublicRecord('blog_comments', newComment);
+    if (!res.success) {
+      return { success: false, error: res.error || 'Could not submit comment.' };
+    }
 
-    try {
-      upsertToSupabase('blog_comments', newComment).catch(err => {
-        console.warn('Supabase comment sync notice:', err);
-      });
-    } catch {}
-
-    try {
-      fetch('/api/public/comments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ postId, authorName, authorEmail, content }),
-      }).catch(() => {});
-    } catch {}
-
-    return { success: true, comment: newComment };
+    setBlogComments(prev => [newComment, ...prev]);
+    return { success: true };
   };
 
-  // Server-verified admin mutation with instant optimistic UI update
+  // Direct Supabase Admin Mutation -> Writes immediately to Supabase and returns real save status
   const adminMutate = async (
     action: 'create' | 'update' | 'delete',
     collection: string,
     id?: string,
-    data?: any,
-    token?: string
+    data?: any
   ): Promise<{ success: boolean; error?: string }> => {
-    // 1. IMMEDIATELY mutate local state & localStorage so the UI updates instantly
-    if (collection === 'site_settings') {
-      setSiteSettings(prev => {
-        const next = { ...prev, ...data };
-        setLocal('settings', next);
-        return next;
-      });
-    } else if (collection === 'theme_tokens') {
-      setThemeTokens(prev => {
-        const next = { ...prev, ...data };
-        setLocal('theme_tokens', next);
-        return next;
-      });
-    } else if (collection === 'milestones') {
-      setMilestones(prev => {
-        let next: Milestone[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'ms-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(m => m.id === id ? { ...m, ...data } : m);
-        } else {
-          next = prev.filter(m => m.id !== id);
-        }
-        setLocal('milestones', next);
-        return next;
-      });
-    } else if (collection === 'services') {
-      setServices(prev => {
-        let next: Service[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'srv-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(s => s.id === id ? { ...s, ...data } : s);
-        } else {
-          next = prev.filter(s => s.id !== id);
-        }
-        setLocal('services', next);
-        return next;
-      });
-    } else if (collection === 'portfolio_categories') {
-      setCategories(prev => {
-        let next: PortfolioCategory[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'cat-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(c => c.id === id ? { ...c, ...data } : c);
-        } else {
-          next = prev.filter(c => c.id !== id);
-        }
-        setLocal('categories', next);
-        return next;
-      });
-    } else if (collection === 'portfolio_items') {
-      setPortfolioItems(prev => {
-        let next: PortfolioItem[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'item-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(i => i.id === id ? { ...i, ...data } : i);
-        } else {
-          next = prev.filter(i => i.id !== id);
-        }
-        setLocal('portfolio_items', next);
-        return next;
-      });
-    } else if (collection === 'reviews') {
-      setReviews(prev => {
-        let next: Review[];
-        if (action === 'create') {
-          next = [{ id: id || 'rev-' + Date.now(), ...data }, ...prev];
-        } else if (action === 'update') {
-          next = prev.map(r => r.id === id ? { ...r, ...data } : r);
-        } else {
-          next = prev.filter(r => r.id !== id);
-        }
-        setLocal('reviews', next);
-        return next;
-      });
-    } else if (collection === 'bookings') {
-      setBookings(prev => {
-        let next: Booking[];
-        if (action === 'create') {
-          next = [{ id: id || 'book-' + Date.now(), ...data }, ...prev];
-        } else if (action === 'update') {
-          next = prev.map(b => b.id === id ? { ...b, ...data } : b);
-        } else {
-          next = prev.filter(b => b.id !== id);
-        }
-        setLocal('bookings', next);
-        return next;
-      });
-    } else if (collection === 'faqs') {
-      setFaqs(prev => {
-        let next: FAQ[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'faq-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(f => f.id === id ? { ...f, ...data } : f);
-        } else {
-          next = prev.filter(f => f.id !== id);
-        }
-        setLocal('faqs', next);
-        return next;
-      });
-    } else if (collection === 'blog_posts') {
-      setBlogPosts(prev => {
-        let next: BlogPost[];
-        if (action === 'create') {
-          next = [{ id: id || 'post-' + Date.now(), ...data }, ...prev];
-        } else if (action === 'update') {
-          next = prev.map(p => p.id === id ? { ...p, ...data } : p);
-        } else {
-          next = prev.filter(p => p.id !== id);
-        }
-        setLocal('blog_posts', next);
-        return next;
-      });
-    } else if (collection === 'blog_comments') {
-      setBlogComments(prev => {
-        let next: BlogComment[];
-        if (action === 'create') {
-          next = [{ id: id || 'comm-' + Date.now(), ...data }, ...prev];
-        } else if (action === 'update') {
-          next = prev.map(c => c.id === id ? { ...c, ...data } : c);
-        } else {
-          next = prev.filter(c => c.id !== id);
-        }
-        setLocal('blog_comments', next);
-        return next;
-      });
-    } else if (collection === 'social_links') {
-      setSocialLinks(data);
-      setLocal('social_links', data);
-    } else if (collection === 'client_logos') {
-      setClientLogos(prev => {
-        let next: ClientLogo[];
-        if (action === 'create') {
-          next = [...prev, { id: id || 'cl-' + Date.now(), ...data }];
-        } else if (action === 'update') {
-          next = prev.map(c => c.id === id ? { ...c, ...data } : c);
-        } else {
-          next = prev.filter(c => c.id !== id);
-        }
-        setLocal('client_logos', next);
-        return next;
-      });
+    const tableMap: Record<string, string> = {
+      site_settings: 'site_settings',
+      theme_tokens: 'theme_tokens',
+      milestones: 'milestones',
+      services: 'services',
+      portfolio_categories: 'portfolio_categories',
+      categories: 'portfolio_categories',
+      portfolio_items: 'portfolio_items',
+      reviews: 'reviews',
+      bookings: 'bookings',
+      faqs: 'faqs',
+      blog_posts: 'blog_posts',
+      blog_comments: 'blog_comments',
+      client_logos: 'client_logos',
+      social_links: 'social_links'
+    };
+
+    const supabaseTable = tableMap[collection];
+    if (!supabaseTable) {
+      return { success: false, error: `Unknown collection: ${collection}` };
     }
 
-    // 2. Direct Supabase sync if client is active
-    try {
-      const tableMap: Record<string, string> = {
-        site_settings: 'site_settings',
-        theme_tokens: 'theme_tokens',
-        milestones: 'milestones',
-        services: 'services',
-        portfolio_categories: 'portfolio_categories',
-        categories: 'portfolio_categories',
-        portfolio_items: 'portfolio_items',
-        reviews: 'reviews',
-        bookings: 'bookings',
-        faqs: 'faqs',
-        blog_posts: 'blog_posts',
-        blog_comments: 'blog_comments',
-        client_logos: 'client_logos'
-      };
-      const supabaseTable = tableMap[collection];
-      if (supabaseTable) {
-        if (action === 'delete' && id) {
-          deleteFromSupabase(supabaseTable, id).catch(() => {});
-        } else if (action === 'create' || action === 'update') {
-          const docToSync = (supabaseTable === 'site_settings' || supabaseTable === 'theme_tokens')
-            ? { id: 'default', ...data }
-            : { id: id || (data && data.id), ...data };
-          upsertToSupabase(supabaseTable, docToSync).catch(() => {});
-        }
-      }
-    } catch {}
+    const recordId =
+      supabaseTable === 'site_settings' || supabaseTable === 'theme_tokens'
+        ? 'default'
+        : id || data?.id || `${collection.slice(0, 4)}-${Date.now()}`;
 
-    // 3. Synchronize to server with auth token in background
-    try {
-      let authToken = token;
-      if (!authToken) {
-        try {
-          const raw = localStorage.getItem('av_prod_admin_session');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            authToken = parsed.token;
-          }
-        } catch {}
+    // Build merged record for upsert so partial updates (like booking status) include full row data
+    let recordToSave: any = null;
+    if (action !== 'delete') {
+      if (supabaseTable === 'site_settings') {
+        recordToSave = { ...siteSettings, ...data, id: 'default', updatedAt: new Date().toISOString() };
+      } else if (supabaseTable === 'theme_tokens') {
+        recordToSave = { ...themeTokens, ...data, id: 'default', updatedAt: new Date().toISOString() };
+      } else if (supabaseTable === 'bookings') {
+        const existing = bookings.find(b => b.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId, updatedAt: new Date().toISOString() };
+      } else if (supabaseTable === 'milestones') {
+        const existing = milestones.find(m => m.id === recordId);
+        const merged = { ...(existing || {}), ...data, id: recordId };
+        recordToSave = {
+          ...merged,
+          body: merged.body || merged.description || '',
+          description: merged.description || merged.body || ''
+        };
+      } else if (supabaseTable === 'reviews') {
+        const existing = reviews.find(r => r.id === recordId);
+        const merged = { ...(existing || {}), ...data, id: recordId };
+        recordToSave = {
+          ...merged,
+          reviewerName: merged.reviewerName || merged.author || 'Client',
+          author: merged.author || merged.reviewerName || 'Client',
+          reviewText: merged.reviewText || merged.text || '',
+          text: merged.text || merged.reviewText || '',
+          source: merged.source || 'Google',
+          status: merged.status || 'Live'
+        };
+      } else if (supabaseTable === 'services') {
+        const existing = services.find(s => s.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId };
+      } else if (supabaseTable === 'portfolio_categories') {
+        const existing = categories.find(c => c.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId };
+      } else if (supabaseTable === 'portfolio_items') {
+        const existing = portfolioItems.find(i => i.id === recordId);
+        recordToSave = {
+          showDescription: true,
+          altText: data?.title || '',
+          order: portfolioItems.length + 1,
+          ...(existing || {}),
+          ...data,
+          id: recordId
+        };
+      } else if (supabaseTable === 'faqs') {
+        const existing = faqs.find(f => f.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId };
+      } else if (supabaseTable === 'blog_posts') {
+        const existing = blogPosts.find(p => p.id === recordId);
+        const slug =
+          data?.slug ||
+          existing?.slug ||
+          (data?.title || 'post').toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        recordToSave = {
+          status: 'Published',
+          featuredImage: '',
+          metaTitle: data?.title || '',
+          metaDescription: data?.excerpt || '',
+          ogImage: '',
+          createdAt: existing?.createdAt || new Date().toISOString(),
+          ...(existing || {}),
+          ...data,
+          slug,
+          id: recordId
+        };
+      } else if (supabaseTable === 'blog_comments') {
+        const existing = blogComments.find(c => c.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId };
+      } else if (supabaseTable === 'client_logos') {
+        const existing = clientLogos.find(c => c.id === recordId);
+        recordToSave = { ...(existing || {}), ...data, id: recordId };
+      } else if (supabaseTable === 'social_links') {
+        recordToSave = { ...data, id: recordId };
       }
+    }
 
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (authToken) {
-        headers['Authorization'] = `Bearer ${authToken}`;
+    // 1. Write directly to Supabase first
+    let dbResult: { success: boolean; error?: string };
+    if (action === 'delete') {
+      dbResult = await deleteFromSupabase(supabaseTable, recordId);
+    } else if (supabaseTable === 'social_links' && Array.isArray(data)) {
+      // Batch update social links array
+      let firstError: string | undefined;
+      for (let i = 0; i < data.length; i++) {
+        const item = data[i];
+        const sId = item.id || item.platform?.toLowerCase() || `soc-${i}`;
+        const r = await upsertToSupabase('social_links', { id: sId, platform: item.platform, url: item.url });
+        if (!r.success && !firstError) firstError = r.error;
       }
+      dbResult = firstError ? { success: false, error: firstError } : { success: true };
+    } else {
+      dbResult = await upsertToSupabase(supabaseTable, recordToSave);
+    }
 
-      fetch('/api/admin/mutate', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ action, collection, id, data }),
-      }).catch(e => {
-        console.warn('API mutation sync warning:', e);
-      });
-    } catch {
-      // Local state is already successfully updated
+    if (!dbResult.success) {
+      return dbResult;
+    }
+
+    // 2. Update in-memory React state after confirmed Supabase write
+    if (supabaseTable === 'site_settings') {
+      setSiteSettings(recordToSave);
+    } else if (supabaseTable === 'theme_tokens') {
+      setThemeTokens(recordToSave);
+    } else if (supabaseTable === 'milestones') {
+      setMilestones(prev =>
+        action === 'delete'
+          ? prev.filter(m => m.id !== recordId)
+          : prev.some(m => m.id === recordId)
+          ? prev.map(m => (m.id === recordId ? recordToSave : m))
+          : [...prev, recordToSave]
+      );
+    } else if (supabaseTable === 'services') {
+      setServices(prev =>
+        action === 'delete'
+          ? prev.filter(s => s.id !== recordId)
+          : prev.some(s => s.id === recordId)
+          ? prev.map(s => (s.id === recordId ? recordToSave : s))
+          : [...prev, recordToSave]
+      );
+    } else if (supabaseTable === 'portfolio_categories') {
+      setCategories(prev =>
+        action === 'delete'
+          ? prev.filter(c => c.id !== recordId)
+          : prev.some(c => c.id === recordId)
+          ? prev.map(c => (c.id === recordId ? recordToSave : c))
+          : [...prev, recordToSave]
+      );
+    } else if (supabaseTable === 'portfolio_items') {
+      setPortfolioItems(prev =>
+        action === 'delete'
+          ? prev.filter(i => i.id !== recordId)
+          : prev.some(i => i.id === recordId)
+          ? prev.map(i => (i.id === recordId ? recordToSave : i))
+          : [...prev, recordToSave]
+      );
+    } else if (supabaseTable === 'reviews') {
+      setReviews(prev =>
+        action === 'delete'
+          ? prev.filter(r => r.id !== recordId)
+          : prev.some(r => r.id === recordId)
+          ? prev.map(r => (r.id === recordId ? recordToSave : r))
+          : [recordToSave, ...prev]
+      );
+    } else if (supabaseTable === 'bookings') {
+      setBookings(prev =>
+        action === 'delete'
+          ? prev.filter(b => b.id !== recordId)
+          : prev.some(b => b.id === recordId)
+          ? prev.map(b => (b.id === recordId ? recordToSave : b))
+          : [recordToSave, ...prev]
+      );
+    } else if (supabaseTable === 'faqs') {
+      setFaqs(prev =>
+        action === 'delete'
+          ? prev.filter(f => f.id !== recordId)
+          : prev.some(f => f.id === recordId)
+          ? prev.map(f => (f.id === recordId ? recordToSave : f))
+          : [...prev, recordToSave]
+      );
+    } else if (supabaseTable === 'blog_posts') {
+      setBlogPosts(prev =>
+        action === 'delete'
+          ? prev.filter(p => p.id !== recordId)
+          : prev.some(p => p.id === recordId)
+          ? prev.map(p => (p.id === recordId ? recordToSave : p))
+          : [recordToSave, ...prev]
+      );
+    } else if (supabaseTable === 'blog_comments') {
+      setBlogComments(prev =>
+        action === 'delete'
+          ? prev.filter(c => c.id !== recordId)
+          : prev.some(c => c.id === recordId)
+          ? prev.map(c => (c.id === recordId ? recordToSave : c))
+          : [recordToSave, ...prev]
+      );
+    } else if (supabaseTable === 'social_links') {
+      if (Array.isArray(data)) {
+        setSocialLinks(data);
+      }
+    } else if (supabaseTable === 'client_logos') {
+      setClientLogos(prev =>
+        action === 'delete'
+          ? prev.filter(c => c.id !== recordId)
+          : prev.some(c => c.id === recordId)
+          ? prev.map(c => (c.id === recordId ? recordToSave : c))
+          : [...prev, recordToSave]
+      );
     }
 
     return { success: true };
   };
 
-  const refreshAdminData = async (token?: string) => {
+  // Fetch admin-only bookings & comments from Supabase (requires authenticated session)
+  const refreshAdminData = useCallback(async () => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
     try {
-      // 1. If Supabase is connected, prefer syncing directly from Supabase first
-      const supabase = getSupabaseClient();
-      if (supabase) {
-        try {
-          const { data: dbBookings } = await supabase.from('bookings').select('*').order('created_at', { ascending: false });
-          if (Array.isArray(dbBookings)) {
-            const converted = dbBookings.map(b => toCamelCase(b)) as Booking[];
-            setBookings(converted);
-            setLocal('bookings', converted);
-          }
-          const { data: dbComments } = await supabase.from('blog_comments').select('*').order('created_at', { ascending: false });
-          if (Array.isArray(dbComments)) {
-            const converted = dbComments.map(c => toCamelCase(c)) as BlogComment[];
-            setBlogComments(converted);
-            setLocal('blog_comments', converted);
-          }
-          return;
-        } catch {
-          // Gracefully continue to fallback endpoints
-        }
-      }
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData?.session) return;
 
-      let authToken = token;
-      if (!authToken) {
-        try {
-          const raw1 = localStorage.getItem('av_admin_session');
-          if (raw1) {
-            authToken = JSON.parse(raw1).token;
-          }
-        } catch {}
-        if (!authToken) {
-          try {
-            const raw2 = localStorage.getItem('av_prod_admin_session');
-            if (raw2) {
-              authToken = JSON.parse(raw2).token;
-            }
-          } catch {}
-        }
-      }
+      const [ bookingsRes, commentsRes ] = await Promise.all([
+        supabase.from('bookings').select('*').order('created_at', { ascending: false }),
+        supabase.from('blog_comments').select('*').order('created_at', { ascending: false })
+      ]);
 
-      // 2. Try authenticated admin sync endpoint
-      let adminFetched = false;
-      if (authToken) {
-        try {
-          const headers: Record<string, string> = {
-            'Authorization': `Bearer ${authToken}`
-          };
-          const res = await fetch('/api/admin/data', { headers });
-          if (res.ok) {
-            const { data } = await res.json();
-            if (data) {
-              adminFetched = true;
-              if (Array.isArray(data.bookings)) {
-                setBookings(data.bookings);
-                setLocal('bookings', data.bookings);
-              }
-              if (Array.isArray(data.blogComments)) {
-                setBlogComments(data.blogComments);
-                setLocal('blog_comments', data.blogComments);
-              }
-            }
-          }
-        } catch {
-          // Gracefully fallback
-        }
+      if (Array.isArray(bookingsRes.data)) {
+        setBookings(bookingsRes.data.map(b => toCamelCase(b)) as Booking[]);
       }
-
-      // 3. If not authenticated or admin sync wasn't completed, sync public bookings & comments
-      if (!adminFetched) {
-        try {
-          const publicRes = await fetch('/api/public/bookings');
-          if (publicRes.ok) {
-            const pubData = await publicRes.json();
-            if (pubData && Array.isArray(pubData.bookings)) {
-              setBookings(pubData.bookings);
-              setLocal('bookings', pubData.bookings);
-            }
-          }
-        } catch {
-          // Offline or local storage mode: keep local cache without noisy warnings
-        }
+      if (Array.isArray(commentsRes.data)) {
+        setBlogComments(commentsRes.data.map(c => toCamelCase(c)) as BlogComment[]);
       }
     } catch {
-      // Quiet fallback without noisy warnings
+      // Quietly ignore if offline
     }
-  };
+  }, []);
 
-  const syncFromSupabase = async (): Promise<{ success: boolean; message: string }> => {
+  // Load all public website content directly from Supabase on every page load
+  const syncFromSupabase = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     const supabase = getSupabaseClient();
     if (!supabase) {
-      return { success: false, message: 'Supabase credentials not configured in Settings.' };
+      setIsLoading(false);
+      return { success: false, message: 'Supabase environment variables are not configured.' };
     }
 
     try {
@@ -735,10 +564,11 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         dbCats,
         dbItems,
         dbReviews,
-        dbBookings,
         dbFaqs,
         dbPosts,
-        dbComments
+        dbComments,
+        dbLogos,
+        dbSocials
       ] = await Promise.all([
         fetchSingletonFromSupabase<SiteSettings>('site_settings'),
         fetchSingletonFromSupabase<ThemeTokens>('theme_tokens'),
@@ -747,65 +577,62 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchFromSupabase<PortfolioCategory>('portfolio_categories'),
         fetchFromSupabase<PortfolioItem>('portfolio_items'),
         fetchFromSupabase<Review>('reviews'),
-        fetchFromSupabase<Booking>('bookings'),
         fetchFromSupabase<FAQ>('faqs'),
         fetchFromSupabase<BlogPost>('blog_posts'),
         fetchFromSupabase<BlogComment>('blog_comments'),
+        fetchFromSupabase<ClientLogo>('client_logos'),
+        fetchFromSupabase<SocialLink>('social_links'),
       ]);
 
       if (settings && settings.heroTitle) {
         setSiteSettings(prev => ({ ...prev, ...settings }));
-        setLocal('settings', settings);
       }
       if (tokens && tokens.goldAccent) {
         setThemeTokens(prev => ({ ...prev, ...tokens }));
-        setLocal('theme_tokens', tokens);
       }
       if (dbMilestones && dbMilestones.length > 0) {
-        setMilestones(dbMilestones);
-        setLocal('milestones', dbMilestones);
+        setMilestones(dbMilestones.sort((a, b) => (a.order || 0) - (b.order || 0)));
       }
       if (dbServices && dbServices.length > 0) {
-        setServices(dbServices);
-        setLocal('services', dbServices);
+        setServices(dbServices.sort((a, b) => (a.order || 0) - (b.order || 0)));
       }
       if (dbCats && dbCats.length > 0) {
-        setCategories(dbCats);
-        setLocal('categories', dbCats);
+        setCategories(dbCats.sort((a, b) => (a.order || 0) - (b.order || 0)));
       }
       if (dbItems && dbItems.length > 0) {
-        setPortfolioItems(dbItems);
-        setLocal('portfolio_items', dbItems);
+        setPortfolioItems(dbItems.sort((a, b) => (a.order || 0) - (b.order || 0)));
       }
       if (dbReviews && dbReviews.length > 0) {
         setReviews(dbReviews);
-        setLocal('reviews', dbReviews);
-      }
-      if (dbBookings && dbBookings.length > 0) {
-        setBookings(dbBookings);
-        setLocal('bookings', dbBookings);
       }
       if (dbFaqs && dbFaqs.length > 0) {
-        setFaqs(dbFaqs);
-        setLocal('faqs', dbFaqs);
+        setFaqs(dbFaqs.sort((a, b) => (a.order || 0) - (b.order || 0)));
       }
       if (dbPosts && dbPosts.length > 0) {
         setBlogPosts(dbPosts);
-        setLocal('blog_posts', dbPosts);
       }
       if (dbComments && dbComments.length > 0) {
         setBlogComments(dbComments);
-        setLocal('blog_comments', dbComments);
+      }
+      if (dbLogos && dbLogos.length > 0) {
+        setClientLogos(dbLogos.sort((a, b) => (a.order || 0) - (b.order || 0)));
+      }
+      if (dbSocials && dbSocials.length > 0) {
+        setSocialLinks(dbSocials);
       }
 
-      return { success: true, message: 'Successfully synced all data from Supabase!' };
+      await refreshAdminData();
+      setIsLoading(false);
+      return { success: true, message: 'Loaded latest content from Supabase.' };
     } catch (err: any) {
-      return { success: false, message: err?.message || 'Failed to sync from Supabase' };
+      setIsLoading(false);
+      return { success: false, message: err?.message || 'Failed to load content from Supabase.' };
     }
-  };
+  }, [refreshAdminData]);
 
+  // One-time migration: uploads all current in-memory content (and any local images) to Supabase
   const syncAllToSupabase = async () => {
-    return await pushAllDataToSupabase({
+    const res = await pushAllDataToSupabase({
       siteSettings,
       themeTokens,
       milestones,
@@ -816,111 +643,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       bookings,
       faqs,
       blogPosts,
-      blogComments
+      blogComments,
+      clientLogos,
+      socialLinks
     });
+    if (res.success) {
+      await syncFromSupabase();
+    }
+    return res;
   };
 
-  // Keep live sync active on window focus and storage events
+  // Load from Supabase on mount and subscribe to Realtime changes so live site updates automatically
   useEffect(() => {
-    // Initial fetch on mount
-    refreshAdminData();
+    syncFromSupabase();
 
-    // Check and hydrate from Supabase if configured
-    syncFromSupabase().catch(() => {});
-
-    // Subscribe to Supabase Realtime changes
     const supabase = getSupabaseClient();
     let realtimeChannel: any = null;
     if (supabase) {
-      realtimeChannel = supabase.channel('av-realtime-sub')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, (payload: any) => {
-          if (payload.eventType === 'INSERT' && payload.new) {
-            const newBooking = toCamelCase(payload.new) as Booking;
-            setBookings(prev => {
-              if (prev.some(b => b.id === newBooking.id)) return prev;
-              const next = [newBooking, ...prev];
-              setLocal('bookings', next);
-              return next;
-            });
-          } else if (payload.eventType === 'UPDATE' && payload.new) {
-            const updatedBooking = toCamelCase(payload.new) as Booking;
-            setBookings(prev => {
-              const next = prev.map(b => b.id === updatedBooking.id ? updatedBooking : b);
-              setLocal('bookings', next);
-              return next;
-            });
-          } else if (payload.eventType === 'DELETE' && payload.old) {
-            setBookings(prev => {
-              const next = prev.filter(b => b.id !== payload.old.id);
-              setLocal('bookings', next);
-              return next;
-            });
-          }
-        })
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'blog_comments' }, (payload: any) => {
-          if (payload.eventType === 'INSERT' && payload.new) {
-            const newComm = toCamelCase(payload.new) as BlogComment;
-            setBlogComments(prev => {
-              if (prev.some(c => c.id === newComm.id)) return prev;
-              const next = [newComm, ...prev];
-              setLocal('blog_comments', next);
-              return next;
-            });
-          }
+      realtimeChannel = supabase
+        .channel('av-live-content-sync')
+        .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+          syncFromSupabase();
         })
         .subscribe();
     }
 
-    // Sync on tab focus or storage change
     const handleFocus = () => {
-      refreshAdminData();
-      syncFromSupabase().catch(() => {});
+      syncFromSupabase();
     };
-
-    const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'av_bookings' || e.key === 'bookings') {
-        try {
-          if (e.newValue) {
-            const updated = JSON.parse(e.newValue);
-            if (Array.isArray(updated)) {
-              setBookings(updated);
-            }
-          }
-        } catch {}
-      }
-    };
-
-    const handleCustomBooking = (e: any) => {
-      if (e.detail) {
-        setBookings(prev => {
-          if (prev.some(b => b.id === e.detail.id)) return prev;
-          const updated = [e.detail, ...prev];
-          setLocal('bookings', updated);
-          return updated;
-        });
-      }
-    };
-
     window.addEventListener('focus', handleFocus);
-    window.addEventListener('storage', handleStorage);
-    window.addEventListener('av-booking-created', handleCustomBooking);
-
-    // Periodic live polling every 30 seconds if document is visible
-    const interval = setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      refreshAdminData();
-    }, 30000);
 
     return () => {
       window.removeEventListener('focus', handleFocus);
-      window.removeEventListener('storage', handleStorage);
-      window.removeEventListener('av-booking-created', handleCustomBooking);
-      clearInterval(interval);
       if (supabase && realtimeChannel) {
         supabase.removeChannel(realtimeChannel);
       }
     };
-  }, []);
+  }, [syncFromSupabase]);
 
   return (
     <DataContext.Provider

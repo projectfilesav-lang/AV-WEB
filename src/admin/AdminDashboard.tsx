@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useData } from '../context/DataContext';
 import {
   PortfolioItem,
@@ -9,8 +9,8 @@ import {
   Review,
   Booking,
   FAQ,
-  ThemeTokens,
-  SiteSettings
+  SiteSettings,
+  SocialLink
 } from '../types';
 import {
   Film,
@@ -36,27 +36,21 @@ import {
   MessageSquare,
   Copy,
   ChevronRight,
-  Filter,
   Sparkles,
   RefreshCw,
   Database,
   CloudUpload,
-  CloudDownload,
-  Zap,
   Server,
   Megaphone,
-  Globe
+  Upload
 } from 'lucide-react';
 import { BrandingSettingsEditor } from './BrandingSettingsEditor';
 import { ClientLogosManager } from './ClientLogosManager';
 import {
-  getStoredAdminPassword,
-  updateAdminPassword,
-  getStoredSupabaseConfig,
-  updateSupabaseConfig,
-  clearSupabaseConfig,
+  getSupabaseEnvConfig,
+  updateAdminUserPassword,
+  uploadImageToSupabaseStorage,
   testSupabaseConnection,
-  normalizeSupabaseUrl,
   SUPABASE_SQL_SCHEMA
 } from '../supabase';
 
@@ -84,34 +78,29 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     bookings,
     faqs,
     blogPosts,
-    blogComments,
     socialLinks,
     clientLogos,
     adminMutate,
     updateThemeTokens,
     refreshAdminData,
-    syncAllToSupabase,
-    syncFromSupabase
+    syncAllToSupabase
   } = useData();
 
-  // Navigation tabs (Decluttered into 4 clean primary modules)
+  const envConfig = getSupabaseEnvConfig();
+
+  // Primary navigation tabs
   const [activeTab, setActiveTab] = useState<'bookings' | 'portfolio' | 'content' | 'settings'>('bookings');
 
   // Sub-tabs
   const [portfolioSubTab, setPortfolioSubTab] = useState<'items' | 'categories' | 'services' | 'milestones'>('items');
   const [contentSubTab, setContentSubTab] = useState<'articles' | 'reviews' | 'faqs' | 'clients' | 'banner'>('articles');
-  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'branding' | 'banner' | 'appearance' | 'database'>('security');
+  const [settingsSubTab, setSettingsSubTab] = useState<'security' | 'profile' | 'branding' | 'banner' | 'appearance' | 'database'>('database');
 
-  // Supabase Configuration & Migration states
-  const [supabaseUrlInput, setSupabaseUrlInput] = useState(() => getStoredSupabaseConfig().url);
-  const [supabaseKeyInput, setSupabaseKeyInput] = useState(() => getStoredSupabaseConfig().anonKey);
-  const [showSupabaseKey, setShowSupabaseKey] = useState(false);
+  // Supabase Connection & Migration states
   const [supabaseTesting, setSupabaseTesting] = useState(false);
   const [supabaseTestResult, setSupabaseTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
   const [supabaseMigrating, setSupabaseMigrating] = useState(false);
   const [supabaseMigrationResult, setSupabaseMigrationResult] = useState<{ success: boolean; message: string; counts?: Record<string, number>; errors?: string[] } | null>(null);
-  const [supabaseSyncing, setSupabaseSyncing] = useState(false);
-  const [supabaseSyncResult, setSupabaseSyncResult] = useState<{ success: boolean; message: string } | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [showSqlViewer, setShowSqlViewer] = useState(false);
 
@@ -132,27 +121,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedBookingNotes, setSelectedBookingNotes] = useState<Booking | null>(null);
   const [bookingNotesDraft, setBookingNotesDraft] = useState('');
 
-  // Password management
-  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  // Image upload state for modals
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  // Password management (Supabase Auth)
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [passwordStatusMsg, setPasswordStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
-  const [generatedPasswordCopyToast, setGeneratedPasswordCopyToast] = useState(false);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
 
-  // Toast notifications
+  // Toast notifications (supports both success and error feedback)
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const showToast = (msg: string) => {
     setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Studio Settings form state
+  // Studio Settings & Social Links form state
   const [studioProfile, setStudioProfile] = useState<SiteSettings>(siteSettings);
+  const [socialDrafts, setSocialDrafts] = useState<SocialLink[]>(socialLinks);
+
   useEffect(() => {
     setStudioProfile(siteSettings);
   }, [siteSettings]);
+
+  useEffect(() => {
+    setSocialDrafts(socialLinks);
+  }, [socialLinks]);
 
   const [isRefreshingBookings, setIsRefreshingBookings] = useState(false);
   const handleManualRefreshBookings = async () => {
@@ -160,24 +156,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     await refreshAdminData(token);
     setTimeout(() => {
       setIsRefreshingBookings(false);
-      showToast('Live bookings synchronized successfully.');
-    }, 400);
+      showToast('Bookings refreshed from Supabase');
+    }, 350);
   };
 
-  // Initial sync & periodic background refresh
   useEffect(() => {
     refreshAdminData(token);
   }, [token, refreshAdminData]);
 
-  // Handle password update
-  const handleUpdatePassword = (e: React.FormEvent) => {
+  // Helper to run an admin mutation and always display "Saved to live site" or a clear error
+  const runMutationWithFeedback = async (
+    action: 'create' | 'update' | 'delete',
+    collection: string,
+    id?: string,
+    data?: any
+  ): Promise<boolean> => {
+    const res = await adminMutate(action, collection, id, data, token);
+    if (res.success) {
+      showToast('Saved to live site');
+      return true;
+    } else {
+      showToast(`Save failed: ${res.error || 'Could not write to Supabase'}`);
+      return false;
+    }
+  };
+
+  // Handle Supabase Auth password update
+  const handleUpdatePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setPasswordStatusMsg(null);
-    const existing = getStoredAdminPassword();
-    if (currentPasswordInput.trim() !== existing.trim()) {
-      setPasswordStatusMsg({ type: 'error', text: 'Current password does not match.' });
-      return;
-    }
     if (newPasswordInput.trim().length < 6) {
       setPasswordStatusMsg({ type: 'error', text: 'New password must be at least 6 characters long.' });
       return;
@@ -186,88 +193,74 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setPasswordStatusMsg({ type: 'error', text: 'New password and confirmation do not match.' });
       return;
     }
-    updateAdminPassword(newPasswordInput.trim());
-    setPasswordStatusMsg({
-      type: 'success',
-      text: `Password updated to "${newPasswordInput.trim()}". Please record this password for your next login.`
-    });
-    setCurrentPasswordInput('');
-    setNewPasswordInput('');
-    setConfirmPasswordInput('');
-    showToast('Admin password updated successfully.');
-  };
 
-  // Auto-generate strong password
-  const handleAutoGeneratePassword = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
-    let pass = 'AV-';
-    for (let i = 0; i < 10; i++) {
-      pass += chars.charAt(Math.floor(Math.random() * chars.length));
+    setIsUpdatingPassword(true);
+    const res = await updateAdminUserPassword(newPasswordInput.trim());
+    setIsUpdatingPassword(false);
+
+    if (res.success) {
+      setPasswordStatusMsg({
+        type: 'success',
+        text: 'Your Supabase Admin password has been updated.'
+      });
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+      showToast('Saved to live site');
+    } else {
+      setPasswordStatusMsg({
+        type: 'error',
+        text: res.error || 'Failed to update password in Supabase Auth.'
+      });
+      showToast(`Password update failed: ${res.error || 'Error'}`);
     }
-    setNewPasswordInput(pass);
-    setConfirmPasswordInput(pass);
-    try {
-      navigator.clipboard.writeText(pass);
-      setGeneratedPasswordCopyToast(true);
-      setTimeout(() => setGeneratedPasswordCopyToast(false), 2500);
-    } catch {}
-    showToast('Strong password generated and copied to clipboard.');
   };
 
-  // Delete helpers (instant 0ms deletion with immediate UI response)
+  // Delete helpers with immediate Supabase deletion & clear feedback
   const handleDeletePortfolioItem = async (id: string, title: string) => {
-    if (window.confirm(`Delete "${title}"?`)) {
-      await adminMutate('delete', 'portfolio_items', id, undefined, token);
-      showToast(`"${title}" deleted successfully.`);
+    if (window.confirm(`Delete "${title}" from the live website?`)) {
+      await runMutationWithFeedback('delete', 'portfolio_items', id);
     }
   };
 
   const handleDeleteBooking = async (id: string, clientName: string) => {
     if (window.confirm(`Delete reservation for "${clientName}"?`)) {
-      await adminMutate('delete', 'bookings', id, undefined, token);
-      showToast(`Reservation for ${clientName} deleted.`);
+      await runMutationWithFeedback('delete', 'bookings', id);
     }
   };
 
   const handleDeleteCategory = async (id: string, name: string) => {
     if (window.confirm(`Delete category "${name}"?`)) {
-      await adminMutate('delete', 'portfolio_categories', id, undefined, token);
-      showToast(`Category "${name}" deleted.`);
+      await runMutationWithFeedback('delete', 'portfolio_categories', id);
     }
   };
 
   const handleDeleteService = async (id: string, title: string) => {
     if (window.confirm(`Delete service "${title}"?`)) {
-      await adminMutate('delete', 'services', id, undefined, token);
-      showToast(`Service "${title}" deleted.`);
+      await runMutationWithFeedback('delete', 'services', id);
     }
   };
 
   const handleDeleteMilestone = async (id: string, title: string) => {
     if (window.confirm(`Delete milestone "${title}"?`)) {
-      await adminMutate('delete', 'milestones', id, undefined, token);
-      showToast(`Milestone deleted.`);
+      await runMutationWithFeedback('delete', 'milestones', id);
     }
   };
 
   const handleDeleteArticle = async (id: string, title: string) => {
     if (window.confirm(`Delete article "${title}"?`)) {
-      await adminMutate('delete', 'blog_posts', id, undefined, token);
-      showToast(`Article deleted.`);
+      await runMutationWithFeedback('delete', 'blog_posts', id);
     }
   };
 
   const handleDeleteReview = async (id: string, author: string) => {
     if (window.confirm(`Delete review from "${author}"?`)) {
-      await adminMutate('delete', 'reviews', id, undefined, token);
-      showToast(`Review deleted.`);
+      await runMutationWithFeedback('delete', 'reviews', id);
     }
   };
 
   const handleDeleteFaq = async (id: string) => {
     if (window.confirm('Delete this FAQ entry?')) {
-      await adminMutate('delete', 'faqs', id, undefined, token);
-      showToast('FAQ entry deleted.');
+      await runMutationWithFeedback('delete', 'faqs', id);
     }
   };
 
@@ -300,10 +293,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleSaveBanner = async () => {
     setIsSavingBanner(true);
     try {
-      await adminMutate('update', 'site_settings', 'active', studioProfile, token);
-      showToast('Announcement & advertisement banner saved and published successfully.');
-    } catch {
-      showToast('Error saving banner. Please try again.');
+      await runMutationWithFeedback('update', 'site_settings', 'default', studioProfile);
     } finally {
       setIsSavingBanner(false);
     }
@@ -318,7 +308,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           </div>
           <div>
             <h2 className="font-bold uppercase text-sm text-white flex items-center gap-2">
-              Top Advertisement & Announcement Banner
+              Top Advertisement &amp; Announcement Banner
             </h2>
             <p className="text-white/60 text-xs mt-0.5">
               Displays a high-impact announcement bar at the very top of all website pages for promotions or notices.
@@ -406,7 +396,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             ANNOUNCEMENT / ADVERTISEMENT MESSAGE
           </label>
           <span className="text-white/40 text-[10px] font-mono">
-            {(studioProfile.promoBannerText || '').length} characters (recommended: 30 - 100)
+            {(studioProfile.promoBannerText || '').length} characters
           </span>
         </div>
         <textarea
@@ -421,90 +411,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           placeholder="e.g., Now accepting bookings for Autumn 2026 commercial & narrative production cycles."
           className="w-full px-3 py-2.5 bg-black border border-white/20 rounded text-white text-xs focus:border-[var(--color-gold)] focus:outline-none leading-relaxed"
         />
-      </div>
-
-      {/* One-Click Presets */}
-      <div className="space-y-2">
-        <label className="block text-white/50 text-[10px] uppercase tracking-wider font-semibold">
-          QUICK TEMPLATES & INSPIRATION (CLICK TO LOAD)
-        </label>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              setStudioProfile(prev => ({
-                ...prev,
-                promoBannerEnabled: true,
-                promoBannerText: 'Now accepting bookings for Autumn 2026 commercial & narrative production cycles.'
-              }))
-            }
-            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
-          >
-            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
-              Booking Season Open
-            </span>
-            <span className="text-white/60 group-hover:text-white line-clamp-1">
-              Now accepting bookings for Autumn 2026 commercial & narrative production cycles.
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setStudioProfile(prev => ({
-                ...prev,
-                promoBannerEnabled: true,
-                promoBannerText: 'Special limited-time offer: 15% discount on multi-day 4K commercial and narrative shoots.'
-              }))
-            }
-            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
-          >
-            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
-              Special Promo / Discount
-            </span>
-            <span className="text-white/60 group-hover:text-white line-clamp-1">
-              Special limited-time offer: 15% discount on multi-day 4K commercial shoots.
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setStudioProfile(prev => ({
-                ...prev,
-                promoBannerEnabled: true,
-                promoBannerText: 'New cinema gear in inventory: ARRI Alexa 35 & Cooke Anamorphic /i lenses ready for hire.'
-              }))
-            }
-            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
-          >
-            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
-              Cinema Gear Upgrade
-            </span>
-            <span className="text-white/60 group-hover:text-white line-clamp-1">
-              New cinema gear in inventory: ARRI Alexa 35 & Cooke Anamorphic /i lenses.
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              setStudioProfile(prev => ({
-                ...prev,
-                promoBannerEnabled: true,
-                promoBannerText: 'Film & Sound stages fully booked this weekend for private premiere screening.'
-              }))
-            }
-            className="text-left p-2.5 rounded bg-black/40 hover:bg-black/80 border border-white/10 hover:border-[var(--color-gold)]/50 text-white/80 text-[11px] transition-colors cursor-pointer group"
-          >
-            <span className="font-bold text-[var(--color-gold)] block text-[10px] uppercase">
-              Studio Schedule Notice
-            </span>
-            <span className="text-white/60 group-hover:text-white line-clamp-1">
-              Film & Sound stages fully booked this weekend for private premiere screening.
-            </span>
-          </button>
-        </div>
       </div>
 
       {/* Save Action */}
@@ -525,29 +431,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             onClick={async () => {
               const updated = { ...studioProfile, promoBannerEnabled: false };
               setStudioProfile(updated);
-              await adminMutate('update', 'site_settings', 'active', updated, token);
-              showToast('Announcement banner disabled and hidden from website.');
+              await runMutationWithFeedback('update', 'site_settings', 'default', updated);
             }}
             className="px-3 py-2 text-white/50 hover:text-rose-400 text-xs transition-colors cursor-pointer"
           >
-            Disable & Hide Banner
+            Disable &amp; Hide Banner
           </button>
         )}
       </div>
     </div>
   );
 
+  const isErrorToast =
+    toastMessage &&
+    (toastMessage.toLowerCase().includes('fail') || toastMessage.toLowerCase().includes('error'));
+
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#ededed] flex flex-col font-sans">
       {/* Toast Banner */}
       {toastMessage && (
-        <div className="fixed top-4 right-4 z-50 px-4 py-3 bg-[var(--color-gold)] text-black font-semibold text-xs uppercase tracking-wider rounded shadow-2xl flex items-center gap-2 animate-in fade-in duration-200">
-          <CheckCircle2 className="w-4 h-4" />
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-3 font-semibold text-xs uppercase tracking-wider rounded shadow-2xl flex items-center gap-2 animate-in fade-in duration-200 ${
+            isErrorToast
+              ? 'bg-red-600 text-white border border-red-400'
+              : 'bg-[var(--color-gold)] text-black'
+          }`}
+        >
+          {isErrorToast ? <ShieldAlert className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* Clean, Decluttered Header */}
+      {/* Header */}
       <header className="sticky top-0 z-40 bg-[#111111] border-b border-white/10 px-4 sm:px-8 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded border border-[var(--color-gold)] bg-black flex items-center justify-center text-[var(--color-gold)] shadow-sm">
@@ -559,7 +474,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 AV BACKSTAGE
               </span>
               <span className="px-1.5 py-0.5 rounded bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/30 text-[10px] font-mono text-[var(--color-gold)] uppercase font-semibold">
-                Studio Portal
+                Supabase Live
               </span>
             </div>
             <span className="text-[11px] text-white/50 block mt-0.5 font-mono">
@@ -601,11 +516,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             <Calendar className="w-4 h-4" />
-            <span>Bookings & Inquiries</span>
+            <span>Bookings &amp; Inquiries</span>
             {newBookingsCount > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                activeTab === 'bookings' ? 'bg-black text-[var(--color-gold)]' : 'bg-[var(--color-gold)] text-black'
-              }`}>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  activeTab === 'bookings' ? 'bg-black text-[var(--color-gold)]' : 'bg-[var(--color-gold)] text-black'
+                }`}
+              >
                 {newBookingsCount}
               </span>
             )}
@@ -621,7 +538,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             <Briefcase className="w-4 h-4" />
-            <span>Portfolio & Works</span>
+            <span>Portfolio &amp; Works</span>
             <span className="text-[10px] font-mono opacity-80">({portfolioItems.length})</span>
           </button>
 
@@ -635,7 +552,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             <FileText className="w-4 h-4" />
-            <span>Journal & Reviews</span>
+            <span>Journal &amp; Reviews</span>
           </button>
 
           <button
@@ -648,7 +565,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             }`}
           >
             <Settings className="w-4 h-4" />
-            <span>Settings & Security</span>
+            <span>Settings &amp; Supabase</span>
           </button>
         </div>
       </div>
@@ -660,23 +577,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
            ========================================================================= */}
         {activeTab === 'bookings' && (
           <div className="space-y-6">
-            {/* Header & Stats Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-white/10">
               <div>
                 <h1 className="text-2xl font-bold uppercase text-white tracking-tight">
                   Client Reservations
                 </h1>
                 <p className="text-xs text-white/60 mt-0.5">
-                  Review production dates, approve reservations, manage briefs, and view client contact details.
+                  Review production dates, approve reservations, manage briefs, and view client contact details stored in Supabase.
                 </p>
               </div>
 
-              {/* Quick Status Badges */}
               <div className="flex items-center gap-2 flex-wrap text-xs">
-                <div className="px-2.5 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span className="font-semibold uppercase tracking-wider text-[10px]">Live Sync</span>
-                </div>
                 <div className="px-3 py-1.5 rounded bg-[#141414] border border-white/10 flex items-center gap-2">
                   <span className="text-white/50">Total:</span>
                   <strong className="font-mono text-white">{bookings.length}</strong>
@@ -689,18 +600,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   type="button"
                   onClick={handleManualRefreshBookings}
                   disabled={isRefreshingBookings}
-                  className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/80 hover:text-white flex items-center gap-1.5 transition-all text-xs cursor-pointer active:scale-95 disabled:opacity-50"
-                  title="Force synchronize live reservations from server"
+                  className="px-3 py-1.5 rounded bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 text-white/80 hover:text-white flex items-center gap-1.5 transition-all text-xs cursor-pointer disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingBookings ? 'animate-spin text-[var(--color-gold)]' : ''}`} />
-                  <span>{isRefreshingBookings ? 'Syncing...' : 'Sync Now'}</span>
+                  <span>{isRefreshingBookings ? 'Refreshing...' : 'Refresh'}</span>
                 </button>
               </div>
             </div>
 
             {/* Filter & Search Bar */}
             <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-              {/* Filter Tabs */}
               <div className="flex items-center gap-1.5 overflow-x-auto p-1 bg-[#141414] rounded border border-white/10">
                 {(['All', 'New', 'Approved', 'Rescheduled', 'Canceled'] as const).map((filter) => (
                   <button
@@ -717,7 +626,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 ))}
               </div>
 
-              {/* Search */}
               <div className="relative max-w-xs w-full">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-white/40" />
                 <input
@@ -730,13 +638,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Bookings Table / List */}
+            {/* Bookings List */}
             {filteredBookings.length === 0 ? (
               <div className="p-12 text-center border border-white/10 rounded-lg bg-[#111] text-white/50">
                 <Calendar className="w-8 h-8 mx-auto mb-3 opacity-30 text-[var(--color-gold)]" />
                 <p className="text-sm font-medium text-white/80">No reservations match this filter.</p>
                 <p className="text-xs mt-1 text-white/50">
-                  New reservations submitted through the booking form appear here automatically.
+                  New reservations submitted through the booking form are saved directly to Supabase and appear here.
                 </p>
               </div>
             ) : (
@@ -746,7 +654,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     key={b.id}
                     className="p-5 rounded-lg border border-white/10 bg-[#141414] hover:border-white/20 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4"
                   >
-                    {/* Client & Booking Info */}
                     <div className="space-y-1.5 flex-1">
                       <div className="flex items-center gap-3 flex-wrap">
                         <span className="font-bold text-white text-base">{b.clientName}</span>
@@ -800,13 +707,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       )}
                     </div>
 
-                    {/* Action Buttons */}
                     <div className="flex items-center gap-2 shrink-0 self-end lg:self-center">
                       {b.status !== 'Approved' && (
                         <button
                           onClick={async () => {
-                            await adminMutate('update', 'bookings', b.id, { status: 'Approved' }, token);
-                            showToast(`Reservation for ${b.clientName} approved.`);
+                            await runMutationWithFeedback('update', 'bookings', b.id, { status: 'Approved' });
                           }}
                           className="px-3 py-1.5 bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/50 text-emerald-300 rounded text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer"
                         >
@@ -817,8 +722,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {b.status !== 'Rescheduled' && (
                         <button
                           onClick={async () => {
-                            await adminMutate('update', 'bookings', b.id, { status: 'Rescheduled' }, token);
-                            showToast(`Reservation for ${b.clientName} marked rescheduled.`);
+                            await runMutationWithFeedback('update', 'bookings', b.id, { status: 'Rescheduled' });
                           }}
                           className="px-3 py-1.5 bg-blue-950/50 hover:bg-blue-900/60 border border-blue-500/50 text-blue-300 rounded text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer"
                         >
@@ -829,8 +733,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       {b.status !== 'Canceled' && (
                         <button
                           onClick={async () => {
-                            await adminMutate('update', 'bookings', b.id, { status: 'Canceled' }, token);
-                            showToast(`Reservation for ${b.clientName} canceled.`);
+                            await runMutationWithFeedback('update', 'bookings', b.id, { status: 'Canceled' });
                           }}
                           className="px-3 py-1.5 bg-red-950/40 hover:bg-red-900/50 border border-red-800/60 text-red-300 rounded text-xs font-semibold uppercase tracking-wider transition-colors cursor-pointer"
                         >
@@ -868,7 +771,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
            ========================================================================= */}
         {activeTab === 'portfolio' && (
           <div className="space-y-6">
-            {/* Header & Subtabs */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-white/10">
               <div className="flex items-center gap-2 overflow-x-auto">
                 <button
@@ -913,7 +815,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </button>
               </div>
 
-              {/* Action Button */}
               {portfolioSubTab === 'items' && (
                 <button
                   onClick={() =>
@@ -969,6 +870,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       year: new Date().getFullYear().toString(),
                       title: '',
                       description: '',
+                      photoUrl: '',
                       order: milestones.length + 1
                     })
                   }
@@ -983,7 +885,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* 2.A: Portfolio Items Grid */}
             {portfolioSubTab === 'items' && (
               <div className="space-y-4">
-                {/* Search & Category Filter */}
                 <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
                   <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
                     <button
@@ -1023,7 +924,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </div>
                 </div>
 
-                {/* Items Grid */}
                 {filteredPortfolioItems.length === 0 ? (
                   <div className="p-12 text-center border border-white/10 rounded-lg bg-[#111] text-white/50">
                     <p className="text-sm font-medium text-white/80">No portfolio items found.</p>
@@ -1038,7 +938,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           className="rounded-lg border border-white/10 bg-[#141414] overflow-hidden hover:border-white/20 transition-all flex flex-col justify-between"
                         >
                           <div>
-                            {/* Media preview thumbnail */}
                             <div className="relative aspect-video bg-black/60 overflow-hidden flex items-center justify-center">
                               {item.mediaType === 'photo' && item.mediaUrl ? (
                                 <img
@@ -1065,7 +964,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               )}
                             </div>
 
-                            {/* Info */}
                             <div className="p-4 space-y-1">
                               <span className="text-[10px] font-mono text-[var(--color-gold)] uppercase tracking-wider block">
                                 {cat?.name || 'General'}
@@ -1077,7 +975,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </div>
                           </div>
 
-                          {/* Card Footer Actions */}
                           <div className="p-3 border-t border-white/10 bg-black/30 flex items-center justify-between">
                             <span className="text-[10px] font-mono text-white/40">Order: #{item.order}</span>
                             <div className="flex items-center gap-2">
@@ -1188,7 +1085,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <span className="font-mono text-xs text-[var(--color-gold)] font-bold">{m.year}</span>
                         <span className="font-bold text-white text-sm">{m.title}</span>
                       </div>
-                      <p className="text-xs text-white/60">{m.description}</p>
+                      <p className="text-xs text-white/60">{m.description || m.body}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
@@ -1217,7 +1114,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {activeTab === 'content' && (
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-white/10">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   onClick={() => setContentSubTab('articles')}
                   className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
@@ -1257,7 +1154,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   }`}
                 >
                   <Sparkles className="w-3.5 h-3.5" />
-                  <span>Client & Partner Logos ({clientLogos.length})</span>
+                  <span>Client &amp; Partner Logos ({clientLogos.length})</span>
                 </button>
                 <button
                   onClick={() => setContentSubTab('banner')}
@@ -1281,6 +1178,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setEditingArticle({
                       title: '',
                       slug: '',
+                      featuredImage: '',
                       excerpt: '',
                       content: '',
                       author: 'AV Studio',
@@ -1330,7 +1228,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               )}
             </div>
 
-            {/* Articles */}
             {contentSubTab === 'articles' && (
               <div className="space-y-3">
                 {blogPosts.map((post) => (
@@ -1366,7 +1263,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* Reviews */}
             {contentSubTab === 'reviews' && (
               <div className="space-y-3">
                 {reviews.map((rev) => (
@@ -1376,11 +1272,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-white text-sm">{rev.author}</span>
+                        <span className="font-bold text-white text-sm">{rev.author || rev.reviewerName}</span>
                         {rev.company && <span className="text-xs text-white/50">({rev.company})</span>}
                         <span className="text-xs text-[var(--color-gold)]">★ {rev.rating}/5</span>
                       </div>
-                      <p className="text-xs text-white/70 italic">"{rev.text}"</p>
+                      <p className="text-xs text-white/70 italic">"{rev.text || rev.reviewText}"</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
                       <button
@@ -1390,7 +1286,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <Edit2 className="w-3.5 h-3.5" /> Edit
                       </button>
                       <button
-                        onClick={() => handleDeleteReview(rev.id, rev.author)}
+                        onClick={() => handleDeleteReview(rev.id, rev.author || rev.reviewerName || 'Client')}
                         className="px-2.5 py-1 text-xs text-red-400 hover:bg-red-950/30 rounded transition-colors flex items-center gap-1 cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" /> Delete
@@ -1401,7 +1297,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* FAQs */}
             {contentSubTab === 'faqs' && (
               <div className="space-y-3">
                 {faqs.map((faq) => (
@@ -1437,7 +1332,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* Client & Partner Logos Manager */}
             {contentSubTab === 'clients' && (
               <ClientLogosManager
                 clientLogos={clientLogos}
@@ -1447,26 +1341,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               />
             )}
 
-            {/* Advertisement & Announcement Banner */}
             {contentSubTab === 'banner' && renderAdvertisementBannerEditor()}
           </div>
         )}
 
         {/* =========================================================================
-            TAB 4: SETTINGS & SECURITY
+            TAB 4: SETTINGS & SUPABASE
            ========================================================================= */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10 flex-wrap">
               <button
-                onClick={() => setSettingsSubTab('security')}
-                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
-                  settingsSubTab === 'security'
+                onClick={() => setSettingsSubTab('database')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
+                  settingsSubTab === 'database'
                     ? 'bg-[var(--color-gold)] text-black'
                     : 'text-white/60 hover:text-white bg-[#141414]'
                 }`}
               >
-                Password & Security
+                <Database className="w-3.5 h-3.5" />
+                <span>Supabase Database &amp; Migration</span>
               </button>
               <button
                 onClick={() => setSettingsSubTab('profile')}
@@ -1476,7 +1370,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'text-white/60 hover:text-white bg-[#141414]'
                 }`}
               >
-                Studio Profile
+                Studio Profile &amp; Socials
               </button>
               <button
                 onClick={() => setSettingsSubTab('branding')}
@@ -1487,7 +1381,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 }`}
               >
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Brand Logo & Favicon</span>
+                <span>Brand Logo &amp; Favicon</span>
               </button>
               <button
                 onClick={() => setSettingsSubTab('banner')}
@@ -1511,55 +1405,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     : 'text-white/60 hover:text-white bg-[#141414]'
                 }`}
               >
-                Branding & Accent
+                Theme &amp; Typography
               </button>
               <button
-                onClick={() => setSettingsSubTab('database')}
-                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer flex items-center gap-1.5 ${
-                  settingsSubTab === 'database'
+                onClick={() => setSettingsSubTab('security')}
+                className={`px-3 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors cursor-pointer ${
+                  settingsSubTab === 'security'
                     ? 'bg-[var(--color-gold)] text-black'
                     : 'text-white/60 hover:text-white bg-[#141414]'
                 }`}
               >
-                <Database className="w-3.5 h-3.5" />
-                <span>Supabase Cloud DB</span>
+                Admin Password
               </button>
             </div>
 
-            {/* 4.A: Password & Security */}
+            {/* 4.A: Password & Security (Supabase Auth) */}
             {settingsSubTab === 'security' && (
               <div className="max-w-2xl space-y-6">
-                {/* Active Session Card */}
                 <div className="p-4 rounded-lg border border-[var(--color-gold)]/40 bg-[#141414] flex items-center gap-3.5">
                   <div className="w-10 h-10 rounded bg-black border border-[var(--color-gold)]/50 flex items-center justify-center text-[var(--color-gold)] shrink-0">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
                   <div>
                     <h3 className="font-bold uppercase text-xs text-white tracking-wider">
-                      Backstage Access Protected
+                      Signed in via Supabase Authentication
                     </h3>
                     <p className="text-xs text-white/60 mt-0.5">
-                      Current master password is active. Change it at any time to your preferred custom password.
+                      Logged in as <strong className="text-white">{user.email}</strong>. Only authenticated admins can create, edit, or delete website content.
                     </p>
                   </div>
                 </div>
 
-                {/* Password Change Form */}
                 <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-5">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-[var(--color-gold)]" />
-                      <h2 className="font-bold uppercase text-sm text-white">Change Backstage Password</h2>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleAutoGeneratePassword}
-                      className="px-2.5 py-1 bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25 text-[var(--color-gold)] rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer"
-                      title="Generate high-entropy secure password"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Auto-Generate Password</span>
-                    </button>
+                  <div className="flex items-center gap-2 pb-3 border-b border-white/10">
+                    <KeyRound className="w-4 h-4 text-[var(--color-gold)]" />
+                    <h2 className="font-bold uppercase text-sm text-white">Change Supabase Account Password</h2>
                   </div>
 
                   {passwordStatusMsg && (
@@ -1580,42 +1460,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   )}
 
                   <form onSubmit={handleUpdatePassword} className="space-y-4">
-                    <div>
-                      <div className="flex items-center justify-between mb-1">
-                        <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold">
-                          Current Password *
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => setCurrentPasswordInput(getStoredAdminPassword())}
-                          className="text-[10px] font-mono text-white/50 hover:text-[var(--color-gold)] underline cursor-pointer"
-                        >
-                          Auto-fill current ({getStoredAdminPassword()})
-                        </button>
-                      </div>
-                      <div className="relative">
-                        <input
-                          type={showCurrentPass ? 'text' : 'password'}
-                          required
-                          value={currentPasswordInput}
-                          onChange={(e) => setCurrentPasswordInput(e.target.value)}
-                          placeholder="Enter current password..."
-                          className="w-full px-3 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white outline-none pr-10"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowCurrentPass(!showCurrentPass)}
-                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/50 hover:text-[var(--color-gold)] p-1 cursor-pointer"
-                        >
-                          {showCurrentPass ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                      </div>
-                    </div>
-
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold mb-1">
-                          New Preferred Password *
+                          New Password *
                         </label>
                         <div className="relative">
                           <input
@@ -1623,7 +1471,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             required
                             value={newPasswordInput}
                             onChange={(e) => setNewPasswordInput(e.target.value)}
-                            placeholder="Min 6 chars..."
+                            placeholder="Min 6 characters..."
                             className="w-full px-3 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white outline-none pr-10"
                           />
                           <button
@@ -1654,10 +1502,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="pt-2">
                       <button
                         type="submit"
-                        className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer shadow hover:opacity-90"
+                        disabled={isUpdatingPassword}
+                        className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer shadow hover:opacity-90 disabled:opacity-50"
                       >
                         <Save className="w-4 h-4" />
-                        <span>Save New Preferred Password</span>
+                        <span>{isUpdatingPassword ? 'Updating...' : 'Update Supabase Password'}</span>
                       </button>
                     </div>
                   </form>
@@ -1665,72 +1514,169 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 4.B: Studio Profile */}
+            {/* 4.B: Studio Profile & Social Links */}
             {settingsSubTab === 'profile' && (
-              <div className="max-w-2xl p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4 text-xs">
-                <h2 className="font-bold uppercase text-sm text-white pb-2 border-b border-white/10">
-                  Studio Brand & Contact Details
-                </h2>
+              <div className="max-w-3xl space-y-6 text-xs">
+                <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
+                  <h2 className="font-bold uppercase text-sm text-white pb-2 border-b border-white/10">
+                    Studio Brand, Hero Copy &amp; Contact Details
+                  </h2>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-white/60 mb-1">STUDIO NAME</label>
-                    <input
-                      type="text"
-                      value={studioProfile.siteName}
-                      onChange={(e) => setStudioProfile({ ...studioProfile, siteName: e.target.value })}
-                      className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-white/60 mb-1">STUDIO NAME</label>
+                      <input
+                        type="text"
+                        value={studioProfile.siteName}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, siteName: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/60 mb-1">TAGLINE / SLOGAN</label>
+                      <input
+                        type="text"
+                        value={studioProfile.siteTagline}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, siteTagline: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/60 mb-1">CONTACT EMAIL</label>
+                      <input
+                        type="email"
+                        value={studioProfile.contactEmail}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, contactEmail: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-white/60 mb-1">CONTACT PHONE</label>
+                      <input
+                        type="text"
+                        value={studioProfile.contactPhone}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, contactPhone: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-white/60 mb-1">OFFICE / STUDIO LOCATION</label>
+                      <input
+                        type="text"
+                        value={studioProfile.contactLocation}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, contactLocation: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-white/60 mb-1">HERO HEADLINE</label>
+                      <input
+                        type="text"
+                        value={studioProfile.heroTitle}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, heroTitle: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-white/60 mb-1">HERO SUBTITLE</label>
+                      <textarea
+                        rows={2}
+                        value={studioProfile.heroTagline}
+                        onChange={(e) => setStudioProfile({ ...studioProfile, heroTagline: e.target.value })}
+                        className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-white/60 mb-1">TAGLINE / SLOGAN</label>
-                    <input
-                      type="text"
-                      value={studioProfile.siteTagline}
-                      onChange={(e) => setStudioProfile({ ...studioProfile, siteTagline: e.target.value })}
-                      className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-white/60 mb-1">CONTACT EMAIL</label>
-                    <input
-                      type="email"
-                      value={studioProfile.contactEmail}
-                      onChange={(e) => setStudioProfile({ ...studioProfile, contactEmail: e.target.value })}
-                      className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-white/60 mb-1">CONTACT PHONE</label>
-                    <input
-                      type="text"
-                      value={studioProfile.contactPhone}
-                      onChange={(e) => setStudioProfile({ ...studioProfile, contactPhone: e.target.value })}
-                      className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-white/60 mb-1">OFFICE / STUDIO LOCATION</label>
-                    <input
-                      type="text"
-                      value={studioProfile.contactLocation}
-                      onChange={(e) => setStudioProfile({ ...studioProfile, contactLocation: e.target.value })}
-                      className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
-                    />
+
+                  <div className="pt-3 border-t border-white/10">
+                    <button
+                      onClick={async () => {
+                        await runMutationWithFeedback('update', 'site_settings', 'default', studioProfile);
+                      }}
+                      className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save Studio Profile</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-white/10">
-                  <button
-                    onClick={async () => {
-                      await adminMutate('update', 'site_settings', 'active', studioProfile, token);
-                      showToast('Studio profile saved successfully.');
-                    }}
-                    className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer"
-                  >
-                    <Save className="w-4 h-4" />
-                    <span>Save Studio Profile</span>
-                  </button>
+                {/* Social Media Links Editor */}
+                <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                    <h2 className="font-bold uppercase text-sm text-white">
+                      Social Media Links
+                    </h2>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSocialDrafts(prev => [
+                          ...prev,
+                          { id: `soc-${Date.now()}`, platform: 'Instagram', url: '' }
+                        ])
+                      }
+                      className="px-3 py-1 bg-white/10 hover:bg-white/15 rounded text-white text-[11px] font-bold uppercase flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Platform
+                    </button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {socialDrafts.map((soc, idx) => (
+                      <div key={soc.id || idx} className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
+                        <input
+                          type="text"
+                          value={soc.platform}
+                          onChange={(e) => {
+                            const next = [...socialDrafts];
+                            next[idx] = { ...next[idx], platform: e.target.value };
+                            setSocialDrafts(next);
+                          }}
+                          placeholder="Platform (e.g. Instagram)"
+                          className="sm:col-span-4 px-3 py-2 bg-black border border-white/20 rounded text-white"
+                        />
+                        <input
+                          type="url"
+                          value={soc.url}
+                          onChange={(e) => {
+                            const next = [...socialDrafts];
+                            next[idx] = { ...next[idx], url: e.target.value };
+                            setSocialDrafts(next);
+                          }}
+                          placeholder="https://..."
+                          className="sm:col-span-7 px-3 py-2 bg-black border border-white/20 rounded text-white font-mono"
+                        />
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const idToRemove = soc.id || soc.platform.toLowerCase();
+                            const next = socialDrafts.filter((_, i) => i !== idx);
+                            setSocialDrafts(next);
+                            if (idToRemove) {
+                              await runMutationWithFeedback('delete', 'social_links', idToRemove);
+                            }
+                          }}
+                          className="sm:col-span-1 p-2 text-red-400 hover:bg-red-950/30 rounded flex items-center justify-center cursor-pointer"
+                          title="Remove social link"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="pt-3 border-t border-white/10">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await runMutationWithFeedback('update', 'social_links', 'all', socialDrafts);
+                      }}
+                      className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>Save Social Links</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1741,7 +1687,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 siteSettings={studioProfile}
                 onSave={async (updated) => {
                   setStudioProfile(updated);
-                  await adminMutate('update', 'site_settings', 'active', updated, token);
+                  return await adminMutate('update', 'site_settings', 'default', updated, token);
                 }}
                 showToast={showToast}
               />
@@ -1750,7 +1696,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* 4.C: Advertisement & Announcement Banner */}
             {settingsSubTab === 'banner' && renderAdvertisementBannerEditor()}
 
-            {/* 4.D: Branding & Accent */}
+            {/* 4.D: Theme & Typography */}
             {settingsSubTab === 'appearance' && (
               <div className="max-w-2xl p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4 text-xs">
                 <h2 className="font-bold uppercase text-sm text-white pb-2 border-b border-white/10">
@@ -1764,20 +1710,31 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input
                         type="color"
                         value={themeTokens.goldAccent}
-                        onChange={(e) => updateThemeTokens({ goldAccent: e.target.value })}
+                        onChange={async (e) => {
+                          const res = await updateThemeTokens({ goldAccent: e.target.value });
+                          if (res.success) showToast('Saved to live site');
+                          else showToast(`Save failed: ${res.error}`);
+                        }}
                         className="w-10 h-10 rounded border border-white/20 cursor-pointer bg-black"
                       />
                       <input
                         type="text"
                         value={themeTokens.goldAccent}
-                        onChange={(e) => updateThemeTokens({ goldAccent: e.target.value })}
+                        onChange={async (e) => {
+                          const res = await updateThemeTokens({ goldAccent: e.target.value });
+                          if (res.success) showToast('Saved to live site');
+                        }}
                         className="w-32 px-3 py-2 bg-black border border-white/20 rounded text-white font-mono text-xs"
                       />
                       <button
-                        onClick={() => updateThemeTokens({ goldAccent: '#d4af37' })}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white/70 text-xs"
+                        onClick={async () => {
+                          const res = await updateThemeTokens({ goldAccent: '#f9931f' });
+                          if (res.success) showToast('Saved to live site');
+                          else showToast(`Save failed: ${res.error}`);
+                        }}
+                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 border border-white/15 rounded text-white/70 text-xs cursor-pointer"
                       >
-                        Reset to Gold (#d4af37)
+                        Reset to Default (#f9931f)
                       </button>
                     </div>
                   </div>
@@ -1787,12 +1744,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-white/60 mb-1">HEADING TYPOGRAPHY</label>
                       <select
                         value={themeTokens.headingFont}
-                        onChange={(e) => updateThemeTokens({ headingFont: e.target.value })}
+                        onChange={async (e) => {
+                          const res = await updateThemeTokens({ headingFont: e.target.value });
+                          if (res.success) showToast('Saved to live site');
+                          else showToast(`Save failed: ${res.error}`);
+                        }}
                         className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
                       >
-                        <option value="Syne">Syne (Architectural / Modernist)</option>
-                        <option value="Cinzel">Cinzel (Cinematic / Classic)</option>
-                        <option value="Montserrat">Montserrat (Geometric / Bold)</option>
+                        <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
                         <option value="Playfair Display">Playfair Display (Editorial / Luxury)</option>
                       </select>
                     </div>
@@ -1800,12 +1759,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <label className="block text-white/60 mb-1">BODY TYPOGRAPHY</label>
                       <select
                         value={themeTokens.bodyFont}
-                        onChange={(e) => updateThemeTokens({ bodyFont: e.target.value })}
+                        onChange={async (e) => {
+                          const res = await updateThemeTokens({ bodyFont: e.target.value });
+                          if (res.success) showToast('Saved to live site');
+                          else showToast(`Save failed: ${res.error}`);
+                        }}
                         className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
                       >
-                        <option value="Plus Jakarta Sans">Plus Jakarta Sans (Crisp UI)</option>
-                        <option value="Inter">Inter</option>
-                        <option value="Outfit">Outfit</option>
+                        <option value="Plus Jakarta Sans">Plus Jakarta Sans</option>
                       </select>
                     </div>
                   </div>
@@ -1813,7 +1774,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div className="pt-3 border-t border-white/10">
                   <button
-                    onClick={() => showToast('Visual branding preferences saved.')}
+                    onClick={async () => {
+                      const res = await updateThemeTokens({});
+                      if (res.success) showToast('Saved to live site');
+                      else showToast(`Save failed: ${res.error || 'Could not save theme'}`);
+                    }}
                     className="px-5 py-2.5 bg-[var(--color-gold)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer"
                   >
                     <Save className="w-4 h-4" />
@@ -1823,11 +1788,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             )}
 
-            {/* 4.D: Supabase Cloud Database & Storage */}
+            {/* 4.E: Supabase Database & One-Time Content Migration */}
             {settingsSubTab === 'database' && (
               <div className="max-w-4xl space-y-6">
-                {/* Connection Status Card */}
-                <div className="p-4 rounded-lg border border-[var(--color-gold)]/40 bg-[#141414] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                {/* Connection Status Card (Read-only from Environment Variables) */}
+                <div className="p-5 rounded-lg border border-[var(--color-gold)]/40 bg-[#141414] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3.5">
                     <div className="w-10 h-10 rounded bg-black border border-[var(--color-gold)]/50 flex items-center justify-center text-[var(--color-gold)] shrink-0">
                       <Database className="w-5 h-5" />
@@ -1835,41 +1800,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div>
                       <div className="flex items-center gap-2">
                         <h3 className="font-bold uppercase text-xs text-white tracking-wider">
-                          Supabase PostgreSQL Database
+                          Supabase Single Source of Truth
                         </h3>
-                        {supabaseUrlInput ? (
+                        {envConfig.isConfigured ? (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-emerald-950/60 border border-emerald-500/40 text-emerald-400">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            Configured
+                            Connected via Environment Variables
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-mono bg-amber-950/60 border border-amber-500/40 text-amber-400">
                             <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                            Unconfigured
+                            Missing Environment Variables
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-white/60 mt-0.5">
-                        {supabaseUrlInput
-                          ? `Connected project: ${supabaseUrlInput}`
-                          : 'All data is currently stored in local browser cache and memory. Connect Supabase for multi-device sync & persistent cloud storage.'}
+                      <p className="text-xs text-white/60 mt-1">
+                        {envConfig.isConfigured
+                          ? `Project Endpoint: ${envConfig.url} (Configured via VITE_SUPABASE_URL & VITE_SUPABASE_ANON_KEY)`
+                          : 'Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your Netlify Environment Variables.'}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={supabaseTesting || !envConfig.isConfigured}
+                      onClick={async () => {
+                        setSupabaseTesting(true);
+                        setSupabaseTestResult(null);
+                        try {
+                          const res = await testSupabaseConnection();
+                          setSupabaseTestResult(res);
+                        } catch (err: any) {
+                          setSupabaseTestResult({ success: false, message: err?.message || 'Connection test failed' });
+                        } finally {
+                          setSupabaseTesting(false);
+                        }
+                      }}
+                      className="px-3.5 py-2 bg-white/10 hover:bg-white/15 text-white border border-white/20 font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${supabaseTesting ? 'animate-spin' : ''}`} />
+                      <span>{supabaseTesting ? 'Testing...' : 'Test Connection'}</span>
+                    </button>
                     <a
                       href="https://supabase.com/dashboard"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="px-3 py-1.5 rounded border border-white/20 bg-black hover:border-[var(--color-gold)]/50 text-white/80 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-colors"
+                      className="px-3.5 py-2 rounded border border-white/20 bg-black hover:border-[var(--color-gold)]/50 text-white/80 hover:text-white text-xs font-mono flex items-center gap-1.5 transition-colors"
                     >
                       <ExternalLink className="w-3.5 h-3.5" />
-                      <span>Supabase Dashboard</span>
+                      <span>Supabase</span>
                     </a>
                   </div>
                 </div>
 
-                {/* Test Result / Status Banner */}
+                {/* Test Result Banner */}
                 {supabaseTestResult && (
                   <div
                     className={`p-3.5 rounded text-xs flex items-start gap-2.5 border ${
@@ -1887,160 +1872,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <p className="font-semibold">{supabaseTestResult.message}</p>
                       {supabaseTestResult.latencyMs !== undefined && (
                         <p className="text-[11px] opacity-80 font-mono mt-0.5">
-                          Round-trip response latency: {supabaseTestResult.latencyMs}ms
+                          Response time: {supabaseTestResult.latencyMs}ms
                         </p>
                       )}
                     </div>
                   </div>
                 )}
 
-                {/* API Credentials Configuration */}
-                <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <KeyRound className="w-4 h-4 text-[var(--color-gold)]" />
-                      <h2 className="font-bold uppercase text-sm text-white">Project API Credentials</h2>
-                    </div>
-                    <span className="text-[11px] font-mono text-white/40">From Project Settings &gt; API</span>
-                  </div>
-
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold mb-1">
-                        Supabase Project URL *
-                      </label>
-                      <input
-                        type="url"
-                        placeholder="https://your-project-id.supabase.co"
-                        value={supabaseUrlInput}
-                        onChange={(e) => setSupabaseUrlInput(e.target.value)}
-                        className="w-full px-3.5 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white font-mono placeholder:text-white/30 outline-none"
-                      />
-                      <p className="text-[11px] text-white/40 mt-1">
-                        The REST and PostgreSQL API endpoint of your Supabase instance.
-                      </p>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-mono text-[var(--color-gold)] uppercase font-semibold mb-1">
-                        Supabase Public / Anon API Key *
-                      </label>
-                      <div className="relative">
-                        <input
-                          type={showSupabaseKey ? 'text' : 'password'}
-                          placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                          value={supabaseKeyInput}
-                          onChange={(e) => setSupabaseKeyInput(e.target.value)}
-                          className="w-full px-3.5 py-2 bg-black border border-white/20 focus:border-[var(--color-gold)] rounded text-xs text-white font-mono placeholder:text-white/30 outline-none pr-10"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowSupabaseKey(!showSupabaseKey)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white cursor-pointer"
-                        >
-                          {showSupabaseKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
+                {/* ONE-TIME MIGRATION CARD: "Move my current content to Supabase" */}
+                <div className="p-6 rounded-lg border border-[var(--color-gold)]/40 bg-[#141414] space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/10">
+                    <div className="flex items-center gap-2.5">
+                      <CloudUpload className="w-5 h-5 text-[var(--color-gold)]" />
+                      <div>
+                        <h2 className="font-bold uppercase text-sm text-white">
+                          One-Time Initial Content Migration
+                        </h2>
+                        <p className="text-[11px] text-white/60">
+                          Uploads all current website content (including converting any local images to Supabase Storage) into your Supabase database once.
+                        </p>
                       </div>
-                      <p className="text-[11px] text-white/40 mt-1">
-                        The public anonymous key (safe for browser client-side RLS enforcement).
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2 pt-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const normalized = normalizeSupabaseUrl(supabaseUrlInput);
-                          if (supabaseUrlInput && !normalized) {
-                            showToast('Please enter a valid URL (e.g. https://your-id.supabase.co)');
-                            return;
-                          }
-                          if (normalized) {
-                            setSupabaseUrlInput(normalized);
-                          }
-                          updateSupabaseConfig(normalized || supabaseUrlInput, supabaseKeyInput);
-                          showToast('Supabase credentials saved.');
-                        }}
-                        className="px-4 py-2 bg-[var(--color-gold)] hover:bg-[var(--color-gold-hover)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        <span>Save Credentials</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        disabled={supabaseTesting || !supabaseUrlInput || !supabaseKeyInput}
-                        onClick={async () => {
-                          setSupabaseTesting(true);
-                          setSupabaseTestResult(null);
-                          try {
-                            const normalized = normalizeSupabaseUrl(supabaseUrlInput) || supabaseUrlInput;
-                            if (normalized && normalized !== supabaseUrlInput) {
-                              setSupabaseUrlInput(normalized);
-                            }
-                            updateSupabaseConfig(normalized, supabaseKeyInput);
-                            const res = await testSupabaseConnection(normalized, supabaseKeyInput);
-                            setSupabaseTestResult(res);
-                          } catch (err: any) {
-                            setSupabaseTestResult({ success: false, message: err?.message || 'Connection failed' });
-                          } finally {
-                            setSupabaseTesting(false);
-                          }
-                        }}
-                        className="px-4 py-2 bg-white/10 hover:bg-white/15 text-white border border-white/20 font-bold text-xs uppercase tracking-wider rounded flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50"
-                      >
-                        <RefreshCw className={`w-3.5 h-3.5 ${supabaseTesting ? 'animate-spin' : ''}`} />
-                        <span>{supabaseTesting ? 'Testing Ping...' : 'Test Connection'}</span>
-                      </button>
-
-                      {(supabaseUrlInput || supabaseKeyInput) && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm('Clear Supabase configuration and revert to local storage?')) {
-                              clearSupabaseConfig();
-                              setSupabaseUrlInput('');
-                              setSupabaseKeyInput('');
-                              setSupabaseTestResult(null);
-                              showToast('Supabase configuration cleared.');
-                            }
-                          }}
-                          className="px-3 py-2 text-red-400 hover:text-red-300 text-xs font-mono cursor-pointer ml-auto"
-                        >
-                          Clear Config
-                        </button>
-                      )}
                     </div>
                   </div>
-                </div>
-
-                {/* Cloud Migration & Synchronization Tool */}
-                <div className="p-6 rounded-lg border border-[var(--color-gold)]/30 bg-[#141414] space-y-4">
-                  <div className="flex items-center justify-between pb-3 border-b border-white/10">
-                    <div className="flex items-center gap-2">
-                      <CloudUpload className="w-4 h-4 text-[var(--color-gold)]" />
-                      <h2 className="font-bold uppercase text-sm text-white">Full Cloud Migration (Firebase &gt; Supabase)</h2>
-                    </div>
-                    <span className="text-[11px] font-mono text-[var(--color-gold)] font-bold">11 Tables Ready</span>
-                  </div>
-
-                  <p className="text-xs text-white/70 leading-relaxed">
-                    Instantly migrate all existing studio content into your connected Supabase PostgreSQL database. This populates all tables: Site Settings, Theme Tokens, Milestones, Portfolio Categories, Services, Portfolio Items, Reviews, Bookings, FAQs, Blog Posts, and Comments.
-                  </p>
 
                   {supabaseMigrationResult && (
                     <div
                       className={`p-4 rounded text-xs space-y-2 border ${
                         supabaseMigrationResult.success
                           ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-300'
-                          : 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                          : 'bg-red-950/40 border-red-500/50 text-red-300'
                       }`}
                     >
                       <div className="flex items-center gap-2 font-bold">
-                        <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                        {supabaseMigrationResult.success ? (
+                          <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+                        ) : (
+                          <ShieldAlert className="w-4 h-4 shrink-0 text-red-400" />
+                        )}
                         <span>{supabaseMigrationResult.message}</span>
                       </div>
-                      {supabaseMigrationResult.counts && (
+                      {supabaseMigrationResult.counts && Object.keys(supabaseMigrationResult.counts).length > 0 && (
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-white/10 font-mono text-[11px]">
                           {Object.entries(supabaseMigrationResult.counts).map(([tbl, count]) => (
                             <div key={tbl} className="bg-black/40 px-2 py-1 rounded">
@@ -2052,110 +1923,72 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </div>
                   )}
 
-                  {supabaseSyncResult && (
-                    <div className="p-3.5 rounded text-xs bg-emerald-950/40 border border-emerald-500/50 text-emerald-300 flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-                      <span>{supabaseSyncResult.message}</span>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center gap-3 pt-2">
+                  <div className="pt-1">
                     <button
+                      id="move-content-to-supabase-btn"
                       type="button"
-                      disabled={supabaseMigrating || !supabaseUrlInput || !supabaseKeyInput}
+                      disabled={supabaseMigrating || !envConfig.isConfigured}
                       onClick={async () => {
-                        if (!confirm('This will upload all current studio data and overwrite matching IDs in Supabase. Proceed?')) return;
                         setSupabaseMigrating(true);
                         setSupabaseMigrationResult(null);
                         try {
-                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
                           const res = await syncAllToSupabase();
                           setSupabaseMigrationResult(res);
-                          showToast('Data migration to Supabase completed.');
+                          if (res.success) {
+                            showToast('Saved to live site');
+                          } else {
+                            showToast(`Migration error: ${res.message}`);
+                          }
                         } catch (err: any) {
+                          const msg = err?.message || 'Unexpected error during migration.';
                           setSupabaseMigrationResult({
                             success: false,
-                            message: err?.message || 'Migration error',
-                            errors: [err?.message || 'Unknown error']
+                            message: msg,
+                            errors: [msg]
                           });
+                          showToast(`Migration error: ${msg}`);
                         } finally {
                           setSupabaseMigrating(false);
                         }
                       }}
-                      className="px-5 py-2.5 bg-[var(--color-gold)] hover:bg-[var(--color-gold-hover)] text-black font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
+                      className="px-5 py-3 bg-[var(--color-gold)] hover:brightness-110 text-black font-extrabold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer transition-all shadow-md disabled:opacity-50"
                     >
                       <CloudUpload className={`w-4 h-4 ${supabaseMigrating ? 'animate-bounce' : ''}`} />
-                      <span>{supabaseMigrating ? 'Migrating Records...' : 'Push All Studio Data to Supabase'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={supabaseSyncing || !supabaseUrlInput || !supabaseKeyInput}
-                      onClick={async () => {
-                        if (!confirm('Pull latest data from Supabase into your local browser workspace?')) return;
-                        setSupabaseSyncing(true);
-                        setSupabaseSyncResult(null);
-                        try {
-                          updateSupabaseConfig(supabaseUrlInput, supabaseKeyInput);
-                          const res = await syncFromSupabase();
-                          setSupabaseSyncResult(res);
-                          showToast('Data synced from Supabase.');
-                        } catch (err: any) {
-                          setSupabaseSyncResult({ success: false, message: err?.message || 'Sync error' });
-                        } finally {
-                          setSupabaseSyncing(false);
-                        }
-                      }}
-                      className="px-4 py-2.5 bg-black hover:bg-neutral-900 text-white border border-white/20 font-bold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer transition-colors disabled:opacity-50"
-                    >
-                      <CloudDownload className={`w-4 h-4 ${supabaseSyncing ? 'animate-spin' : ''}`} />
-                      <span>{supabaseSyncing ? 'Pulling...' : 'Pull Latest from Supabase'}</span>
+                      <span>{supabaseMigrating ? 'Uploading Content & Images to Supabase...' : 'Move my current content to Supabase'}</span>
                     </button>
                   </div>
                 </div>
 
-                {/* SQL Schema & Setup Guide */}
+                {/* SQL Schema & Setup Script */}
                 <div className="p-6 rounded-lg border border-white/10 bg-[#141414] space-y-4">
                   <div className="flex items-center justify-between pb-3 border-b border-white/10">
                     <div className="flex items-center gap-2">
                       <Server className="w-4 h-4 text-[var(--color-gold)]" />
-                      <h2 className="font-bold uppercase text-sm text-white">Database SQL Schema & Policies</h2>
+                      <h2 className="font-bold uppercase text-sm text-white">Supabase SQL Setup Script (Run Once)</h2>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
-                          setCopiedSql(true);
-                          setTimeout(() => setCopiedSql(false), 3000);
-                          showToast('SQL setup script copied to clipboard.');
-                        }}
-                        className="px-3 py-1 bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25 text-[var(--color-gold)] rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
-                      >
-                        {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedSql ? 'Copied Script!' : 'Copy SQL Script'}</span>
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(SUPABASE_SQL_SCHEMA);
+                        setCopiedSql(true);
+                        setTimeout(() => setCopiedSql(false), 3000);
+                        showToast('SQL setup script copied to clipboard');
+                      }}
+                      className="px-3 py-1.5 bg-[var(--color-gold)]/15 border border-[var(--color-gold)]/40 hover:bg-[var(--color-gold)]/25 text-[var(--color-gold)] rounded text-[11px] font-mono flex items-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedSql ? 'Copied SQL!' : 'Copy SQL Script'}</span>
+                    </button>
                   </div>
 
-                  <div className="bg-black/50 p-4 rounded border border-white/5 space-y-2 text-xs text-white/70">
-                    <p className="font-bold text-white uppercase text-[11px] tracking-wider">Quick Setup Instructions:</p>
-                    <ol className="list-decimal list-inside space-y-1 text-white/70 font-mono text-[11px]">
-                      <li>Open your Supabase Project dashboard: <a href="https://supabase.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-[var(--color-gold)] underline">supabase.com/dashboard</a></li>
-                      <li>Navigate to the <strong>SQL Editor</strong> tab on the left sidebar.</li>
-                      <li>Click <strong>Copy SQL Script</strong> above, paste it into the editor, and click <strong>Run</strong>.</li>
-                      <li>All 11 tables, RLS security policies, and realtime publications will be created instantly!</li>
-                    </ol>
-                  </div>
-
-                  <div className="pt-2">
+                  <div className="pt-1">
                     <button
                       type="button"
                       onClick={() => setShowSqlViewer(!showSqlViewer)}
                       className="text-xs font-mono text-[var(--color-gold)] hover:underline flex items-center gap-1 cursor-pointer"
                     >
                       <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showSqlViewer ? 'rotate-90' : ''}`} />
-                      <span>{showSqlViewer ? 'Hide SQL Script Viewer' : 'View Full SQL Schema Script'}</span>
+                      <span>{showSqlViewer ? 'Hide SQL Script' : 'Show Full SQL Script'}</span>
                     </button>
 
                     {showSqlViewer && (
@@ -2172,10 +2005,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </main>
 
       {/* =========================================================================
-          MODALS / DRAWERS FOR COMPACT EDITING (Keeps workspace clean and decluttered)
+          MODALS / DRAWERS FOR EDITING
          ========================================================================= */}
 
-      {/* 1. Add / Edit Portfolio Item Modal */}
+      {/* 1. Add / Edit Portfolio Item Modal (with direct Supabase Storage image upload) */}
       {editingItem && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#141414] border border-[var(--color-gold)]/60 rounded-lg max-w-lg w-full p-6 space-y-4 shadow-2xl max-h-[90vh] overflow-y-auto text-xs">
@@ -2234,14 +2067,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
 
+              {/* Upload Image directly to Supabase Storage */}
               <div>
-                <label className="block text-white/60 mb-1">MEDIA URL / EMBED *</label>
+                <label className="block text-white/60 mb-1">UPLOAD IMAGE TO SUPABASE STORAGE</label>
+                <label className="flex items-center justify-center gap-2 p-3 border border-dashed border-white/25 hover:border-[var(--color-gold)] rounded bg-black/50 cursor-pointer text-white/80 hover:text-white transition-colors">
+                  <Upload className="w-4 h-4 text-[var(--color-gold)]" />
+                  <span>{isUploadingMedia ? 'Uploading to Supabase Storage...' : 'Choose image file to upload'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingMedia}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsUploadingMedia(true);
+                      const res = await uploadImageToSupabaseStorage(file, 'portfolio');
+                      setIsUploadingMedia(false);
+                      if (res.success && res.url) {
+                        setEditingItem(prev => ({ ...prev, mediaUrl: res.url }));
+                        showToast('Image uploaded to Supabase Storage');
+                      } else {
+                        showToast(`Upload failed: ${res.error || 'Could not upload image'}`);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-white/60 mb-1">MEDIA URL / EMBED LINK *</label>
                 <input
                   type="text"
                   value={editingItem.mediaUrl || ''}
                   onChange={(e) => setEditingItem({ ...editingItem, mediaUrl: e.target.value })}
-                  placeholder="https://... (Image URL, YouTube, Vimeo, or Audio MP3)"
-                  className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
+                  placeholder="https://... (Supabase Storage URL, YouTube, Vimeo, or Audio)"
+                  className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white font-mono"
                 />
               </div>
 
@@ -2277,19 +2138,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Cancel
               </button>
               <button
+                disabled={isUploadingMedia}
                 onClick={async () => {
                   if (!editingItem.title?.trim()) {
-                    alert('Please enter a title.');
+                    showToast('Save failed: Please enter a title');
                     return;
                   }
                   const isNew = !editingItem.id;
-                  const action = isNew ? 'create' : 'update';
-                  const id = editingItem.id;
-                  await adminMutate(action, 'portfolio_items', id, editingItem, token);
-                  showToast('Portfolio item saved.');
-                  setEditingItem(null);
+                  const ok = await runMutationWithFeedback(
+                    isNew ? 'create' : 'update',
+                    'portfolio_items',
+                    editingItem.id,
+                    editingItem
+                  );
+                  if (ok) setEditingItem(null);
                 }}
-                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
+                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs disabled:opacity-50"
               >
                 Save Item
               </button>
@@ -2349,17 +2213,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  if (!editingCategory.name) return;
+                  if (!editingCategory.name?.trim()) {
+                    showToast('Save failed: Please enter a category name');
+                    return;
+                  }
                   const isNew = !editingCategory.id;
-                  await adminMutate(
+                  const ok = await runMutationWithFeedback(
                     isNew ? 'create' : 'update',
                     'portfolio_categories',
                     editingCategory.id,
-                    editingCategory,
-                    token
+                    editingCategory
                   );
-                  showToast('Category saved.');
-                  setEditingCategory(null);
+                  if (ok) setEditingCategory(null);
                 }}
                 className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
               >
@@ -2415,11 +2280,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  if (!editingService.title) return;
+                  if (!editingService.title?.trim()) {
+                    showToast('Save failed: Please enter a service title');
+                    return;
+                  }
                   const isNew = !editingService.id;
-                  await adminMutate(isNew ? 'create' : 'update', 'services', editingService.id, editingService, token);
-                  showToast('Service saved.');
-                  setEditingService(null);
+                  const ok = await runMutationWithFeedback(
+                    isNew ? 'create' : 'update',
+                    'services',
+                    editingService.id,
+                    editingService
+                  );
+                  if (ok) setEditingService(null);
                 }}
                 className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
               >
@@ -2461,10 +2333,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-white/60 mb-1">DESCRIPTION</label>
                 <textarea
                   rows={3}
-                  value={editingMilestone.description || ''}
-                  onChange={(e) => setEditingMilestone({ ...editingMilestone, description: e.target.value })}
+                  value={editingMilestone.description || editingMilestone.body || ''}
+                  onChange={(e) =>
+                    setEditingMilestone({
+                      ...editingMilestone,
+                      description: e.target.value,
+                      body: e.target.value
+                    })
+                  }
                   className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
                 />
+              </div>
+              <div>
+                <label className="block text-white/60 mb-1">OPTIONAL MILESTONE PHOTO (SUPABASE STORAGE)</label>
+                <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-white/25 hover:border-[var(--color-gold)] rounded bg-black/50 cursor-pointer text-white/80 hover:text-white transition-colors">
+                  <Upload className="w-4 h-4 text-[var(--color-gold)]" />
+                  <span>{isUploadingMedia ? 'Uploading...' : 'Upload Milestone Image'}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingMedia}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setIsUploadingMedia(true);
+                      const res = await uploadImageToSupabaseStorage(file, 'milestones');
+                      setIsUploadingMedia(false);
+                      if (res.success && res.url) {
+                        setEditingMilestone(prev => ({ ...prev, photoUrl: res.url }));
+                        showToast('Image uploaded to Supabase Storage');
+                      } else {
+                        showToast(`Upload failed: ${res.error}`);
+                      }
+                    }}
+                  />
+                </label>
               </div>
             </div>
             <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
@@ -2475,20 +2379,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Cancel
               </button>
               <button
+                disabled={isUploadingMedia}
                 onClick={async () => {
-                  if (!editingMilestone.title) return;
+                  if (!editingMilestone.title?.trim()) {
+                    showToast('Save failed: Please enter a milestone title');
+                    return;
+                  }
                   const isNew = !editingMilestone.id;
-                  await adminMutate(
+                  const ok = await runMutationWithFeedback(
                     isNew ? 'create' : 'update',
                     'milestones',
                     editingMilestone.id,
-                    editingMilestone,
-                    token
+                    editingMilestone
                   );
-                  showToast('Milestone saved.');
-                  setEditingMilestone(null);
+                  if (ok) setEditingMilestone(null);
                 }}
-                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
+                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs disabled:opacity-50"
               >
                 Save Milestone
               </button>
@@ -2535,6 +2441,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               </div>
               <div>
+                <label className="block text-white/60 mb-1">FEATURED IMAGE (SUPABASE STORAGE)</label>
+                <div className="space-y-2">
+                  <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-white/25 hover:border-[var(--color-gold)] rounded bg-black/50 cursor-pointer text-white/80 hover:text-white transition-colors">
+                    <Upload className="w-4 h-4 text-[var(--color-gold)]" />
+                    <span>{isUploadingMedia ? 'Uploading...' : 'Upload Featured Image'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={isUploadingMedia}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        setIsUploadingMedia(true);
+                        const res = await uploadImageToSupabaseStorage(file, 'blog');
+                        setIsUploadingMedia(false);
+                        if (res.success && res.url) {
+                          setEditingArticle(prev => ({ ...prev, featuredImage: res.url }));
+                          showToast('Image uploaded to Supabase Storage');
+                        } else {
+                          showToast(`Upload failed: ${res.error}`);
+                        }
+                      }}
+                    />
+                  </label>
+                  <input
+                    type="text"
+                    value={editingArticle.featuredImage || ''}
+                    onChange={(e) => setEditingArticle({ ...editingArticle, featuredImage: e.target.value })}
+                    placeholder="https://... (Featured Image URL)"
+                    className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white font-mono"
+                  />
+                </div>
+              </div>
+              <div>
                 <label className="block text-white/60 mb-1">EXCERPT</label>
                 <textarea
                   rows={2}
@@ -2561,20 +2502,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 Cancel
               </button>
               <button
+                disabled={isUploadingMedia}
                 onClick={async () => {
-                  if (!editingArticle.title) return;
+                  if (!editingArticle.title?.trim()) {
+                    showToast('Save failed: Please enter an article title');
+                    return;
+                  }
                   const isNew = !editingArticle.id;
-                  await adminMutate(
+                  const ok = await runMutationWithFeedback(
                     isNew ? 'create' : 'update',
                     'blog_posts',
                     editingArticle.id,
-                    editingArticle,
-                    token
+                    editingArticle
                   );
-                  showToast('Article saved.');
-                  setEditingArticle(null);
+                  if (ok) setEditingArticle(null);
                 }}
-                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
+                className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs disabled:opacity-50"
               >
                 Save Article
               </button>
@@ -2595,8 +2538,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-white/60 mb-1">CLIENT NAME *</label>
                 <input
                   type="text"
-                  value={editingReview.author || ''}
-                  onChange={(e) => setEditingReview({ ...editingReview, author: e.target.value })}
+                  value={editingReview.author || editingReview.reviewerName || ''}
+                  onChange={(e) =>
+                    setEditingReview({
+                      ...editingReview,
+                      author: e.target.value,
+                      reviewerName: e.target.value
+                    })
+                  }
                   className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
                 />
               </div>
@@ -2626,8 +2575,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <label className="block text-white/60 mb-1">TESTIMONIAL TEXT</label>
                 <textarea
                   rows={3}
-                  value={editingReview.text || ''}
-                  onChange={(e) => setEditingReview({ ...editingReview, text: e.target.value })}
+                  value={editingReview.text || editingReview.reviewText || ''}
+                  onChange={(e) =>
+                    setEditingReview({
+                      ...editingReview,
+                      text: e.target.value,
+                      reviewText: e.target.value
+                    })
+                  }
                   className="w-full px-3 py-2 bg-black border border-white/20 rounded text-white"
                 />
               </div>
@@ -2641,11 +2596,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  if (!editingReview.author) return;
+                  if (!(editingReview.author || editingReview.reviewerName)?.trim()) {
+                    showToast('Save failed: Please enter a client name');
+                    return;
+                  }
                   const isNew = !editingReview.id;
-                  await adminMutate(isNew ? 'create' : 'update', 'reviews', editingReview.id, editingReview, token);
-                  showToast('Review saved.');
-                  setEditingReview(null);
+                  const ok = await runMutationWithFeedback(
+                    isNew ? 'create' : 'update',
+                    'reviews',
+                    editingReview.id,
+                    editingReview
+                  );
+                  if (ok) setEditingReview(null);
                 }}
                 className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
               >
@@ -2701,11 +2663,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  if (!editingFaq.question) return;
+                  if (!editingFaq.question?.trim()) {
+                    showToast('Save failed: Please enter a question');
+                    return;
+                  }
                   const isNew = !editingFaq.id;
-                  await adminMutate(isNew ? 'create' : 'update', 'faqs', editingFaq.id, editingFaq, token);
-                  showToast('FAQ saved.');
-                  setEditingFaq(null);
+                  const ok = await runMutationWithFeedback(
+                    isNew ? 'create' : 'update',
+                    'faqs',
+                    editingFaq.id,
+                    editingFaq
+                  );
+                  if (ok) setEditingFaq(null);
                 }}
                 className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
               >
@@ -2716,7 +2685,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* 8. Booking Internal Notes Drawer / Modal */}
+      {/* 8. Booking Internal Notes Modal */}
       {selectedBookingNotes && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#141414] border border-[var(--color-gold)]/60 rounded-lg max-w-md w-full p-6 space-y-4 shadow-2xl text-xs">
@@ -2765,15 +2734,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </button>
               <button
                 onClick={async () => {
-                  await adminMutate(
+                  const ok = await runMutationWithFeedback(
                     'update',
                     'bookings',
                     selectedBookingNotes.id,
-                    { adminNotes: bookingNotesDraft },
-                    token
+                    { adminNotes: bookingNotesDraft }
                   );
-                  showToast('Production notes saved.');
-                  setSelectedBookingNotes(null);
+                  if (ok) setSelectedBookingNotes(null);
                 }}
                 className="px-5 py-2 bg-[var(--color-gold)] text-black font-bold rounded cursor-pointer uppercase text-xs"
               >

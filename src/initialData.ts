@@ -54,7 +54,7 @@ export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   ctaHeadline: 'Ready to bring your story to life?',
   ctaSubline: 'From commercial brand films to original narratives, we collaborate closely with directors and producers worldwide.',
   contactEmail: 'projectfilesav@gmail.com',
-  contactPhone: '+1 (323) 555-0198',
+  contactPhone: '+254759514351',
   copyrightText: '© AV PRODUCTIONS 2026',
   promoBannerEnabled: true,
   promoBannerText: 'Now accepting bookings for Autumn 2026 commercial & narrative production cycles.',

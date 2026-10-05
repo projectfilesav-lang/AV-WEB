@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { SiteSettings } from '../types';
-import { Upload, Image as ImageIcon, Check, RefreshCw, Eye, Sparkles, Globe, Shield } from 'lucide-react';
+import { uploadImageToSupabaseStorage } from '../supabase';
+import { Upload, Image as ImageIcon, Check, RefreshCw, Sparkles, Globe } from 'lucide-react';
 
 interface BrandingSettingsEditorProps {
   siteSettings: SiteSettings;
-  onSave: (updatedSettings: SiteSettings) => Promise<void>;
+  onSave: (updatedSettings: SiteSettings) => Promise<{ success: boolean; error?: string }>;
   showToast: (msg: string) => void;
 }
 
@@ -18,36 +19,40 @@ export const BrandingSettingsEditor: React.FC<BrandingSettingsEditorProps> = ({
   const [logoAlt, setLogoAlt] = useState(siteSettings.logoAlt || 'AV Productions');
   const [autoSyncFavicon, setAutoSyncFavicon] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [dragOverLogo, setDragOverLogo] = useState(false);
   const [dragOverFavicon, setDragOverFavicon] = useState(false);
 
   const logoFileInputRef = useRef<HTMLInputElement>(null);
   const faviconFileInputRef = useRef<HTMLInputElement>(null);
 
-  // File to base64 DataURL converter
-  const processImageFile = (file: File, isLogo: boolean) => {
+  // Upload image file directly to Supabase Storage ('studio-media' bucket) and save only public URL
+  const processImageFile = async (file: File, isLogo: boolean) => {
     if (!file.type.startsWith('image/')) {
-      showToast('Please upload a valid image file (SVG, PNG, JPG, WebP)');
+      showToast('Error: Please upload a valid image file (SVG, PNG, JPG, WebP)');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const result = e.target?.result as string;
-      if (result) {
-        if (isLogo) {
-          setLogoUrl(result);
-          if (autoSyncFavicon) {
-            setFaviconUrl(result);
-          }
-          showToast(autoSyncFavicon ? 'Logo uploaded & synced as favicon!' : 'Logo uploaded!');
-        } else {
-          setFaviconUrl(result);
-          showToast('Favicon uploaded!');
-        }
+    setIsUploading(true);
+    showToast('Uploading image to Supabase Storage...');
+    const res = await uploadImageToSupabaseStorage(file, 'branding');
+    setIsUploading(false);
+
+    if (!res.success || !res.url) {
+      showToast(`Upload failed: ${res.error || 'Could not upload image'}`);
+      return;
+    }
+
+    if (isLogo) {
+      setLogoUrl(res.url);
+      if (autoSyncFavicon) {
+        setFaviconUrl(res.url);
       }
-    };
-    reader.readAsDataURL(file);
+      showToast('Logo uploaded to Supabase Storage! Click Save to publish.');
+    } else {
+      setFaviconUrl(res.url);
+      showToast('Favicon uploaded to Supabase Storage! Click Save to publish.');
+    }
   };
 
   const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -73,10 +78,14 @@ export const BrandingSettingsEditor: React.FC<BrandingSettingsEditorProps> = ({
         faviconUrl: faviconUrl.trim() || logoUrl.trim(),
         logoAlt: logoAlt.trim() || 'AV Productions',
       };
-      await onSave(updated);
-      showToast('Brand logo & browser favicon updated successfully!');
-    } catch {
-      showToast('Failed to save branding settings.');
+      const res = await onSave(updated);
+      if (res.success) {
+        showToast('Saved to live site');
+      } else {
+        showToast(`Save failed: ${res.error || 'Could not save to Supabase'}`);
+      }
+    } catch (err: any) {
+      showToast(`Save failed: ${err?.message || 'Unexpected error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -361,11 +370,11 @@ export const BrandingSettingsEditor: React.FC<BrandingSettingsEditorProps> = ({
           <button
             type="button"
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || isUploading}
             className="px-6 py-2.5 bg-[var(--color-gold)] text-black font-extrabold text-xs uppercase tracking-wider rounded flex items-center gap-2 cursor-pointer hover:brightness-110 transition-all shadow-md disabled:opacity-50"
           >
-            {isSaving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-            <span>{isSaving ? 'Applying...' : 'Save & Apply Brand Changes'}</span>
+            {isSaving || isUploading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+            <span>{isUploading ? 'Uploading Image...' : isSaving ? 'Saving...' : 'Save & Apply Brand Changes'}</span>
           </button>
         </div>
       </div>

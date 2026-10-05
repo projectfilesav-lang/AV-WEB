@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { ClientLogo } from '../types';
 import { INITIAL_CLIENT_LOGOS } from '../initialData';
+import { uploadImageToSupabaseStorage } from '../supabase';
 import { Plus, Trash2, Edit2, Check, X, Upload, Sparkles, RefreshCw, Eye } from 'lucide-react';
 
 interface ClientLogosManagerProps {
@@ -11,7 +12,7 @@ interface ClientLogosManagerProps {
     id: string,
     payload: any,
     token?: string | null
-  ) => Promise<any>;
+  ) => Promise<{ success: boolean; error?: string }>;
   token: string | null;
   showToast: (msg: string) => void;
 }
@@ -24,6 +25,7 @@ export const ClientLogosManager: React.FC<ClientLogosManagerProps> = ({
 }) => {
   const [editingLogo, setEditingLogo] = useState<Partial<ClientLogo> | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,25 +38,28 @@ export const ClientLogosManager: React.FC<ClientLogosManagerProps> = ({
     });
   };
 
-  const processFile = (file: File) => {
+  const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      showToast('Please upload a valid image file (SVG, PNG, JPG, WebP)');
+      showToast('Error: Please upload a valid image file (SVG, PNG, JPG, WebP)');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
-      if (dataUrl) {
-        setEditingLogo(prev => ({
-          ...prev,
-          logoUrl: dataUrl,
-          name: prev?.name || file.name.replace(/\.[^/.]+$/, '').toUpperCase()
-        }));
-        showToast('Logo image loaded successfully!');
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsUploading(true);
+    showToast('Uploading partner logo to Supabase Storage...');
+    const res = await uploadImageToSupabaseStorage(file, 'clients');
+    setIsUploading(false);
+
+    if (!res.success || !res.url) {
+      showToast(`Upload failed: ${res.error || 'Could not upload logo'}`);
+      return;
+    }
+
+    setEditingLogo(prev => ({
+      ...prev,
+      logoUrl: res.url,
+      name: prev?.name || file.name.replace(/\.[^/.]+$/, '').toUpperCase()
+    }));
+    showToast('Logo uploaded to Supabase Storage!');
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -70,11 +75,15 @@ export const ClientLogosManager: React.FC<ClientLogosManagerProps> = ({
       const existing = clientLogos.find(c => c.id === id);
       const action = existing ? 'update' : 'create';
 
-      await adminMutate(action, 'client_logos', id, editingLogo, token);
-      showToast(`Partner "${editingLogo.name}" saved successfully.`);
-      setEditingLogo(null);
-    } catch {
-      showToast('Failed to save partner logo.');
+      const res = await adminMutate(action, 'client_logos', id, editingLogo, token);
+      if (res.success) {
+        showToast('Saved to live site');
+        setEditingLogo(null);
+      } else {
+        showToast(`Save failed: ${res.error || 'Could not save to Supabase'}`);
+      }
+    } catch (err: any) {
+      showToast(`Save failed: ${err?.message || 'Unexpected error'}`);
     } finally {
       setIsSaving(false);
     }
@@ -84,23 +93,33 @@ export const ClientLogosManager: React.FC<ClientLogosManagerProps> = ({
     if (!window.confirm(`Remove "${name}" from client logo showcase?`)) return;
 
     try {
-      await adminMutate('delete', 'client_logos', id, null, token);
-      showToast(`Removed "${name}".`);
-    } catch {
-      showToast('Failed to remove partner logo.');
+      const res = await adminMutate('delete', 'client_logos', id, null, token);
+      if (res.success) {
+        showToast('Saved to live site');
+      } else {
+        showToast(`Delete failed: ${res.error || 'Could not delete from Supabase'}`);
+      }
+    } catch (err: any) {
+      showToast(`Delete failed: ${err?.message || 'Unexpected error'}`);
     }
   };
 
   const handleRestoreDefaults = async () => {
-    if (!window.confirm('Restore default curated studio partner logos? This will reset the marquee list.')) return;
+    if (!window.confirm('Restore default curated studio partner logos? This will save the default marquee list to Supabase.')) return;
 
     try {
+      let failedError = '';
       for (const logo of INITIAL_CLIENT_LOGOS) {
-        await adminMutate('create', 'client_logos', logo.id, logo, token);
+        const res = await adminMutate('create', 'client_logos', logo.id, logo, token);
+        if (!res.success && !failedError) failedError = res.error || 'Failed to save default logo';
       }
-      showToast('Default partner logos restored successfully.');
-    } catch {
-      showToast('Failed to restore default logos.');
+      if (failedError) {
+        showToast(`Restore failed: ${failedError}`);
+      } else {
+        showToast('Saved to live site');
+      }
+    } catch (err: any) {
+      showToast(`Restore failed: ${err?.message || 'Unexpected error'}`);
     }
   };
 
@@ -368,11 +387,11 @@ export const ClientLogosManager: React.FC<ClientLogosManagerProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
+                disabled={isSaving || isUploading}
                 className="px-4 py-2 bg-[var(--color-gold)] text-black font-extrabold uppercase tracking-wider rounded text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               >
-                {isSaving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                <span>{isSaving ? 'Saving...' : 'Save Brand Partner'}</span>
+                {isSaving || isUploading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
+                <span>{isUploading ? 'Uploading...' : isSaving ? 'Saving...' : 'Save Brand Partner'}</span>
               </button>
             </div>
           </form>

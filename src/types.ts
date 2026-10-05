@@ -1,4 +1,7 @@
 export interface SiteSettings {
+  siteName?: string;
+  siteTagline?: string;
+  contactLocation?: string;
   logoUrl?: string;
   faviconUrl?: string;
   logoAlt?: string;

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useData } from '../context/DataContext';
+import { insertPublicRecord } from '../supabase';
 import { CheckCircle, Instagram, Youtube, Linkedin, Twitter, Video, Mail } from 'lucide-react';
 
 interface ContactPageProps {
@@ -25,20 +26,34 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate = () => {},
     setErrorMsg('');
 
     try {
-      const res = await fetch('/api/public/contact', {
+      const formBody = new URLSearchParams({
+        'form-name': 'studio-contact',
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        message: formData.message.trim(),
+      }).toString();
+
+      // 1. Submit to Netlify Forms via static form POST
+      const netlifyPromise = fetch('/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: formBody,
       });
 
-      if (res.ok) {
-        setIsSubmitted(true);
-        setFormData({ name: '', email: '', message: '' });
-      } else {
-        setIsSubmitted(true);
-      }
-    } catch {
+      // 2. Also record in Supabase contact_messages table (public insert only)
+      const supabasePromise = insertPublicRecord('contact_messages', {
+        id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: formData.name.trim(),
+        email: formData.email.trim(),
+        message: formData.message.trim(),
+        createdAt: new Date().toISOString(),
+      });
+
+      await Promise.allSettled([netlifyPromise, supabasePromise]);
       setIsSubmitted(true);
+      setFormData({ name: '', email: '', message: '' });
+    } catch {
+      setErrorMsg('Unable to send message right now. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

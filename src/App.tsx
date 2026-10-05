@@ -28,7 +28,7 @@ import { NotFoundPage } from './pages/NotFoundPage';
 import { AdminLogin } from './admin/AdminLogin';
 import { AdminDashboard } from './admin/AdminDashboard';
 import { PortfolioItem } from './types';
-import { getAdminSession, clearAdminSession, saveAdminSession } from './supabase';
+import { getSupabaseClient, signOutAdmin } from './supabase';
 
 const checkIsBackstageRoute = (): boolean => {
   const p = window.location.pathname.toLowerCase().replace(/\/+$/, '');
@@ -62,15 +62,41 @@ const AppContent: React.FC = () => {
   // Lightbox state
   const [activeLightboxItem, setActiveLightboxItem] = useState<PortfolioItem | null>(null);
 
-  // Admin session state
-  const [adminUser, setAdminUser] = useState<{ email: string; id: string } | null>(() => {
-    const session = getAdminSession();
-    return session ? session.user : null;
-  });
-  const [adminToken, setAdminToken] = useState<string | null>(() => {
-    const session = getAdminSession();
-    return session ? session.token : null;
-  });
+  // Admin session state managed by Supabase Auth
+  const [adminUser, setAdminUser] = useState<{ email: string; id: string } | null>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (data?.session?.user) {
+        setAdminUser({
+          email: data.session.user.email || '',
+          id: data.session.user.id
+        });
+        setAdminToken(data.session.access_token);
+      }
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        setAdminUser({
+          email: session.user.email || '',
+          id: session.user.id
+        });
+        setAdminToken(session.access_token);
+      } else {
+        setAdminUser(null);
+        setAdminToken(null);
+      }
+    });
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
 
   // Sync route with browser URL & popstate, plus secret admin keyboard shortcut (Ctrl+Shift+A) & search shortcut (Cmd+K / /)
   useEffect(() => {
@@ -146,13 +172,12 @@ const AppContent: React.FC = () => {
   };
 
   const handleAdminLoginSuccess = (user: { email: string; id: string }, token: string) => {
-    saveAdminSession(token, user);
     setAdminUser(user);
     setAdminToken(token);
   };
 
-  const handleAdminLogout = () => {
-    clearAdminSession();
+  const handleAdminLogout = async () => {
+    await signOutAdmin();
     setAdminUser(null);
     setAdminToken(null);
     navigateToPublic('home');
