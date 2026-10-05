@@ -2,9 +2,21 @@ import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 export const STORAGE_BUCKET = 'studio-media';
 
-function looksLikeApiKey(val: string): boolean {
+const FALLBACK_PROJECT_URL = 'https://xckjehodhdnazychpgnb.supabase.co';
+const FALLBACK_PUBLISHABLE_KEY = 'sb_publishable_AqOa512QiL3EwuCx4eE9TA_VcekZxVx';
+
+function looksLikePublishableOrAnonKey(val: string): boolean {
   const v = val.trim().replace(/^['"]+|['"]+$/g, '').trim();
-  return v.startsWith('sb_publishable_') || v.startsWith('sb_secret_') || v.startsWith('eyJ');
+  return v.startsWith('sb_publishable_') || v.startsWith('eyJ');
+}
+
+function looksLikeSecretKey(val: string): boolean {
+  const v = val.trim().replace(/^['"]+|['"]+$/g, '').trim();
+  return v.startsWith('sb_secret_');
+}
+
+function looksLikeApiKey(val: string): boolean {
+  return looksLikePublishableOrAnonKey(val) || looksLikeSecretKey(val);
 }
 
 export function normalizeSupabaseUrl(input: string | undefined | null): string {
@@ -50,36 +62,58 @@ export function normalizeSupabaseUrl(input: string | undefined | null): string {
 }
 
 /**
- * Reads Supabase configuration strictly from environment variables:
- * VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY
+ * Reads Supabase configuration from environment variables (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY),
+ * automatically recovering if the key and URL were swapped or if SUPABASE_URL was set without VITE_.
  */
 export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean; rawUrl?: string } {
   try {
     const envObj = (import.meta as unknown as { env?: Record<string, string> }).env || {};
-    let rawUrl = (envObj.VITE_SUPABASE_URL || '').trim();
-    let rawKey = (envObj.VITE_SUPABASE_ANON_KEY || '').trim();
+    const candidatesUrl = [
+      envObj.VITE_SUPABASE_URL || '',
+      envObj.SUPABASE_URL || '',
+      envObj.VITE_SUPABASE_ANON_KEY || '',
+      FALLBACK_PROJECT_URL
+    ];
 
-    // Auto-heal if the user accidentally swapped VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify
-    if (looksLikeApiKey(rawUrl) && !looksLikeApiKey(rawKey) && normalizeSupabaseUrl(rawKey)) {
-      const temp = rawUrl;
-      rawUrl = rawKey;
-      rawKey = temp;
+    let resolvedUrl = '';
+    for (const candidate of candidatesUrl) {
+      const norm = normalizeSupabaseUrl(candidate);
+      if (norm) {
+        resolvedUrl = norm;
+        break;
+      }
     }
 
-    const url = normalizeSupabaseUrl(rawUrl);
-    let anonKey = rawKey.replace(/^['"]+|['"]+$/g, '').trim();
-    if (anonKey === 'undefined' || anonKey === 'null') {
-      anonKey = '';
+    const candidatesKey = [
+      envObj.VITE_SUPABASE_ANON_KEY || '',
+      envObj.SUPABASE_ANON_KEY || '',
+      envObj.VITE_SUPABASE_URL || '',
+      FALLBACK_PUBLISHABLE_KEY
+    ];
+
+    let resolvedKey = '';
+    for (const candidate of candidatesKey) {
+      const cleaned = candidate.trim().replace(/^['"]+|['"]+$/g, '').trim();
+      // Never use a secret key in the browser; only accept publishable or anon keys
+      if (cleaned && cleaned !== 'undefined' && cleaned !== 'null' && !looksLikeSecretKey(cleaned) && looksLikePublishableOrAnonKey(cleaned)) {
+        resolvedKey = cleaned;
+        break;
+      }
     }
 
     return {
-      url,
-      anonKey,
-      rawUrl,
-      isConfigured: Boolean(url && anonKey && anonKey.length >= 10)
+      url: resolvedUrl,
+      anonKey: resolvedKey,
+      rawUrl: resolvedUrl,
+      isConfigured: Boolean(resolvedUrl && resolvedKey && resolvedKey.length >= 10)
     };
   } catch {
-    return { url: '', anonKey: '', rawUrl: '', isConfigured: false };
+    return {
+      url: FALLBACK_PROJECT_URL,
+      anonKey: FALLBACK_PUBLISHABLE_KEY,
+      rawUrl: FALLBACK_PROJECT_URL,
+      isConfigured: true
+    };
   }
 }
 
