@@ -2,10 +2,20 @@ import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 export const STORAGE_BUCKET = 'studio-media';
 
+function looksLikeApiKey(val: string): boolean {
+  const v = val.trim().replace(/^['"]+|['"]+$/g, '').trim();
+  return v.startsWith('sb_publishable_') || v.startsWith('sb_secret_') || v.startsWith('eyJ');
+}
+
 export function normalizeSupabaseUrl(input: string | undefined | null): string {
   if (!input || typeof input !== 'string') return '';
   let trimmed = input.trim().replace(/^['"]+|['"]+$/g, '').trim();
   if (!trimmed || trimmed === 'undefined' || trimmed === 'null') return '';
+
+  // Reject if the user accidentally pasted an API key (e.g. sb_publishable_... or eyJ...) into VITE_SUPABASE_URL
+  if (looksLikeApiKey(trimmed)) {
+    return '';
+  }
 
   // Automatically extract project ref if user pasted a Supabase Dashboard link:
   // e.g. https://supabase.com/dashboard/project/abcdefghijklmnop/...
@@ -46,8 +56,15 @@ export function normalizeSupabaseUrl(input: string | undefined | null): string {
 export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean; rawUrl?: string } {
   try {
     const envObj = (import.meta as unknown as { env?: Record<string, string> }).env || {};
-    const rawUrl = (envObj.VITE_SUPABASE_URL || '').trim();
-    const rawKey = (envObj.VITE_SUPABASE_ANON_KEY || '').trim();
+    let rawUrl = (envObj.VITE_SUPABASE_URL || '').trim();
+    let rawKey = (envObj.VITE_SUPABASE_ANON_KEY || '').trim();
+
+    // Auto-heal if the user accidentally swapped VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Netlify
+    if (looksLikeApiKey(rawUrl) && !looksLikeApiKey(rawKey) && normalizeSupabaseUrl(rawKey)) {
+      const temp = rawUrl;
+      rawUrl = rawKey;
+      rawKey = temp;
+    }
 
     const url = normalizeSupabaseUrl(rawUrl);
     let anonKey = rawKey.replace(/^['"]+|['"]+$/g, '').trim();
