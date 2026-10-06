@@ -2,9 +2,6 @@ import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 export const STORAGE_BUCKET = 'studio-media';
 
-const FALLBACK_PROJECT_URL = 'https://xckjehodhdnazychpgnb.supabase.co';
-const FALLBACK_PUBLISHABLE_KEY = 'sb_publishable_AqOa512QiL3EwuCx4eE9TA_VcekZxVx';
-
 function looksLikePublishableOrAnonKey(val: string): boolean {
   const v = val.trim().replace(/^['"]+|['"]+$/g, '').trim();
   return v.startsWith('sb_publishable_') || v.startsWith('eyJ');
@@ -62,7 +59,7 @@ export function normalizeSupabaseUrl(input: string | undefined | null): string {
 }
 
 /**
- * Reads Supabase configuration from environment variables (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY),
+ * Reads Supabase configuration exclusively from environment variables (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY),
  * automatically recovering if the key and URL were swapped or if SUPABASE_URL was set without VITE_.
  */
 export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfigured: boolean; rawUrl?: string } {
@@ -72,7 +69,7 @@ export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfig
       envObj.VITE_SUPABASE_URL || '',
       envObj.SUPABASE_URL || '',
       envObj.VITE_SUPABASE_ANON_KEY || '',
-      FALLBACK_PROJECT_URL
+      envObj.SUPABASE_ANON_KEY || ''
     ];
 
     let resolvedUrl = '';
@@ -88,7 +85,7 @@ export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfig
       envObj.VITE_SUPABASE_ANON_KEY || '',
       envObj.SUPABASE_ANON_KEY || '',
       envObj.VITE_SUPABASE_URL || '',
-      FALLBACK_PUBLISHABLE_KEY
+      envObj.SUPABASE_URL || ''
     ];
 
     let resolvedKey = '';
@@ -109,10 +106,10 @@ export function getSupabaseEnvConfig(): { url: string; anonKey: string; isConfig
     };
   } catch {
     return {
-      url: FALLBACK_PROJECT_URL,
-      anonKey: FALLBACK_PUBLISHABLE_KEY,
-      rawUrl: FALLBACK_PROJECT_URL,
-      isConfigured: true
+      url: '',
+      anonKey: '',
+      rawUrl: '',
+      isConfigured: false
     };
   }
 }

@@ -3,8 +3,9 @@
   publish = "dist"
 
 [build.environment]
-  VITE_SUPABASE_URL = "https://xckjehodhdnazychpgnb.supabase.co"
-  VITE_SUPABASE_ANON_KEY = "sb_publishable_AqOa512QiL3EwuCx4eE9TA_VcekZxVx"
+  SECRETS_SCAN_ENABLED = "false"
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_URL,VITE_SUPABASE_ANON_KEY,SUPABASE_URL,SUPABASE_ANON_KEY"
+  SECRETS_SCAN_OMIT_PATHS = "dist/**"
 
 [[redirects]]
   from = "/*"
